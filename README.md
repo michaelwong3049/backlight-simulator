@@ -1,3 +1,6 @@
+# Backlight-Simulator
+A online web replica version of LEDs changing color in coordination to a video's colors. 
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
