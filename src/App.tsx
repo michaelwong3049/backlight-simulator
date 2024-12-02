@@ -5,13 +5,30 @@ function App() {
   const [_, setDummyState] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // const contextRef = useRef<CanvasRenderingContext2D>( ?? null);
+  const ctx = canvasRef.current?.getContext('2d', { willReadFrequently: true });
 
-  const ctx = canvasRef.current?.getContext('2d');
+  const calculate_kernel = useCallback(() => {
+    const frame = ctx?.getImageData(0, 0, window.innerHeight, window.innerWidth);
+    console.log(ctx)
+    const data = frame?.data;
+    if(frame){
+      for(let i = 0; i < frame?.height; i++){
+        for(let j = 0; j < frame?.width; j++){
+          console.log(data) 
+        }
+      }
+    }
+  }, [ctx])
 
   const rerender = useCallback(() => {
-    setDummyState((prevState) => !prevState);
+    console.log("------ New Frame ------")
+    ctx?.drawImage(videoRef.current!, 0, 0);
+    calculate_kernel()
+    console.log('hi')
     videoRef.current?.requestVideoFrameCallback(rerender);
-  }, []);
+    setDummyState((prevState) => !prevState);
+  }, [calculate_kernel, ctx]);
 
   // runs once when the component first renders
   useEffect(
