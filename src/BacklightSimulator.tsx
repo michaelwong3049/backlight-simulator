@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 const videoSrc = require('./assets/videoplayback.mp4');
 
-const computeBacklightFrame = (frame: ImageBitmap) => {
-  console.log(frame);
+const computeBacklightFrame = (frame: ImageData) => {
   return frame;
 };
 
@@ -19,19 +18,13 @@ export default function BacklightSimulator(props: Props) {
       ctx: CanvasRenderingContext2D
     ) => {
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      // could maybe downsample here
-      createImageBitmap(video, { resizeQuality: 'low' }).then((data) => {
-        const backlightFrame = computeBacklightFrame(data);
-        ctx.drawImage(
-          backlightFrame,
-          0,
-          0,
-          window.innerWidth,
-          window.innerHeight
-        );
-        data.close();
-        video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
-      });
+      ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const backlightFrame = computeBacklightFrame(frame);
+      ctx.putImageData(backlightFrame, 0, 0);
+
+      video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
     },
     []
   );
