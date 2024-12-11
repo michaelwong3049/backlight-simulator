@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import BacklightSimulator from './BacklightSimulator';
+import { DivisionControls } from './DivisionControls';
 
 interface Dimensions {
   width: number;
@@ -8,8 +9,10 @@ interface Dimensions {
 }
 
 function App() {
-  // defaults taken from my local machine lol
+  const [horizontalDivisions, setHorizontalDivisions] = useState(8);
+  const [verticalDivisions, setVerticalDivisions] = useState(8);
   const [backlightDimensions, setBacklightDimensions] = useState<Dimensions>({
+    // defaults taken from my local machine lol
     width: 149,
     height: 879,
   });
@@ -38,7 +41,20 @@ function App() {
           height={backlightDimensions.height}
         />
       </div>
-      <button>hello world</button>
+      <div id='backlight-controls'>
+        <DivisionControls
+          orientation='vertical'
+          divisions={verticalDivisions}
+          onIncrease={() => setVerticalDivisions((num) => num + 1)}
+          onDecrease={() => setVerticalDivisions((num) => num - 1)}
+        />
+        <DivisionControls
+          orientation='horizontal'
+          divisions={horizontalDivisions}
+          onIncrease={() => setHorizontalDivisions((num) => num + 1)}
+          onDecrease={() => setHorizontalDivisions((num) => num - 1)}
+        />
+      </div>
     </div>
   );
 }

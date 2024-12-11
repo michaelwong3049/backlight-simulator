@@ -10,8 +10,29 @@
   width: 100%;
 }
 
+#backlight-controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-evenly;
+  align-items: center;
+  width: 100%;
+  background-color: lightblue;
+}
+
 #video {
   position: absolute;
   max-width: 80%;
   height: auto;
+}
+
+.division-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.division-controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-evenly;
+  align-items: center;
 }
