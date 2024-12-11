@@ -5,10 +5,12 @@ const videoSrc = require('./assets/videoplayback.mp4');
 interface Props {
   width: number;
   height: number;
+  horizontalDivisions: number;
+  verticalDivisions: number;
 }
 
 export default function BacklightSimulator(props: Props) {
-  const { width, height } = props;
+  const { width, height, horizontalDivisions, verticalDivisions } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,7 +34,10 @@ export default function BacklightSimulator(props: Props) {
       );
 
       const frame = ctx.getImageData(0, 0, width, height);
-      const backlightFrame = computeBacklightFrame(frame);
+      const backlightFrame = computeBacklightFrame(frame, {
+        horizontalDivisions,
+        verticalDivisions,
+      });
       ctx.putImageData(backlightFrame, 0, 0);
 
       video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));

@@ -39,6 +39,8 @@ function App() {
         <BacklightSimulator
           width={backlightDimensions.width}
           height={backlightDimensions.height}
+          horizontalDivisions={horizontalDivisions}
+          verticalDivisions={verticalDivisions}
         />
       </div>
       <div id='backlight-controls'>
