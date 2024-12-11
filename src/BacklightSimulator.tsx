@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { computeBacklightFrame } from './colorManipulation';
 const videoSrc = require('./assets/videoplayback.mp4');
 
-const computeBacklightFrame = (frame: ImageData) => {
-  return frame;
-};
-
-interface Props {}
+interface Props {
+  width: number;
+  height: number;
+}
 
 export default function BacklightSimulator(props: Props) {
+  const { width, height } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -17,16 +18,26 @@ export default function BacklightSimulator(props: Props) {
       canvas: HTMLCanvasElement,
       ctx: CanvasRenderingContext2D
     ) => {
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(
+        video,
+        0,
+        0,
+        video.videoWidth,
+        video.videoHeight,
+        0,
+        0,
+        width,
+        height
+      );
 
-      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const frame = ctx.getImageData(0, 0, width, height);
       const backlightFrame = computeBacklightFrame(frame);
       ctx.putImageData(backlightFrame, 0, 0);
 
       video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
     },
-    []
+    [height, width]
   );
 
   useEffect(
@@ -43,8 +54,8 @@ export default function BacklightSimulator(props: Props) {
       video.addEventListener('play', startFrameProcessing);
 
       const handleResize = () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
       };
       window.addEventListener('resize', handleResize);
       handleResize();
@@ -54,16 +65,19 @@ export default function BacklightSimulator(props: Props) {
         window.removeEventListener('resize', handleResize);
       };
     },
-    [handleFrame]
+    [handleFrame, height, width]
   );
 
+  // TODO: we can move these styles into css later
   return (
-    <div className='main'>
-      <canvas
-        ref={canvasRef}
-        width={window.innerWidth}
-        height={window.innerHeight}
-      ></canvas>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <canvas ref={canvasRef} width={width} height={height}></canvas>
       <video ref={videoRef} id='video' src={videoSrc} muted loop controls />
     </div>
   );
