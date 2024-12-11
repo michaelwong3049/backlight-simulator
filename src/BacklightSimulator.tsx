@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { computeBacklightFrame } from './colorManipulation';
+import { colorConvolution } from './colorManipulation';
 const videoSrc = require('./assets/videoplayback.mp4');
 
 interface Props {}
