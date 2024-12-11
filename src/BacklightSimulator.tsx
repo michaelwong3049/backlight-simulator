@@ -34,11 +34,16 @@ export default function BacklightSimulator(props: Props) {
       );
 
       const frame = ctx.getImageData(0, 0, width, height);
-      const backlightFrame = computeBacklightFrame(frame, {
-        horizontalDivisions,
-        verticalDivisions,
-      });
-      ctx.putImageData(backlightFrame, 0, 0);
+      const backlightFrame = computeBacklightFrame(
+        ctx,
+        frame,
+        { width: video.videoWidth, height: video.videoHeight },
+        {
+          horizontalDivisions,
+          verticalDivisions,
+        }
+      );
+      // ctx.putImageData(backlightFrame, 0, 0);
 
       video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
     },
