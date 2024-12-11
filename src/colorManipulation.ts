@@ -41,10 +41,27 @@ function computeDivisions(
   const verticalPadding = (frame.height - videoDimensions.height) / 2;
   const horizontalPadding = (frame.width - videoDimensions.width) / 2;
 
+  const videoTop = verticalPadding;
+  const videoBottom = frame.height - verticalPadding;
+  const videoLeft = horizontalPadding;
+  const videoRight = frame.width - horizontalPadding;
+
   let divisionIdx = 0;
   // loop through all regions with offset, smart skip if we're in video range
   for (let row = 0; row < frame.height; row += canvasDivision.height) {
     for (let col = 0; col < frame.width; col += canvasDivision.width) {
+      // if this top left division will be behind the video, skip
+      const isFirstFit = row === 0 || col === 0;
+      const isLastFit =
+        row + canvasDivision.height >= frame.height ||
+        col + canvasDivision.width >= frame.width;
+      const rowAboveVideo = row < videoTop || row > videoBottom;
+      const colAboveVideo = col < videoLeft || col > videoRight;
+
+      const shouldDraw =
+        isFirstFit || isLastFit || (rowAboveVideo && colAboveVideo);
+      if (!shouldDraw) continue;
+
       // during loop, get color and draw onto canvas
       const color = new Uint8ClampedArray(
         getAverageColor(
@@ -105,7 +122,8 @@ function getPixel(frame: ImageData, row: number, col: number) {
     return EMPTY_PIXEL;
   }
 
-  return frame.data.slice(row * frame.width + col, row * frame.width + col + 4);
+  const truePixelIdx = (row * frame.width + col) * 4;
+  return frame.data.slice(truePixelIdx, truePixelIdx + 4);
 }
 
 const EMPTY_PIXEL = [0, 0, 0, 255];

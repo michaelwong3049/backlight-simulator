@@ -37,7 +37,7 @@ export default function BacklightSimulator(props: Props) {
       const backlightFrame = computeBacklightFrame(
         ctx,
         frame,
-        { width: video.videoWidth, height: video.videoHeight },
+        { width: video.offsetWidth, height: video.offsetHeight },
         {
           horizontalDivisions,
           verticalDivisions,
