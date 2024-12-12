@@ -22,6 +22,7 @@ export function computeBacklightFrame(
   return frame;
 }
 
+// TODO: handle corners better by average the width and height
 export function computeDivisions(
   frame: ImageData,
   videoDimensions: Dimensions,
