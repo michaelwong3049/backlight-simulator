@@ -5,8 +5,8 @@ import { DivisionControls } from '@/components/DivisionControls';
 import { Dimensions } from '@/types';
 
 function App() {
-  const [horizontalDivisions, setHorizontalDivisions] = useState(8);
-  const [verticalDivisions, setVerticalDivisions] = useState(8);
+  const [horizontalDivisions, setHorizontalDivisions] = useState(3);
+  const [verticalDivisions, setVerticalDivisions] = useState(3);
   const [backlightDimensions, setBacklightDimensions] = useState<Dimensions>({
     // defaults taken from my local machine lol
     width: 1497,
