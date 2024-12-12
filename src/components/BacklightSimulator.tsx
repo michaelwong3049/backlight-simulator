@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { computeBacklightFrame } from './colorManipulation';
+import { computeBacklightFrame, getAverageColor } from '../colorManipulation';
 const videoSrc = require('./assets/videoplayback.mp4');
 
 interface Props {
@@ -18,7 +18,9 @@ export default function BacklightSimulator(props: Props) {
     (
       video: HTMLVideoElement,
       canvas: HTMLCanvasElement,
-      ctx: CanvasRenderingContext2D
+      ctx: CanvasRenderingContext2D,
+      horizontalDivisions: number,
+      verticalDivisions: number
     ) => {
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(
@@ -45,7 +47,9 @@ export default function BacklightSimulator(props: Props) {
       );
       // ctx.putImageData(backlightFrame, 0, 0);
 
-      video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
+      video.requestVideoFrameCallback(() =>
+        handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
+      );
     },
     [height, width]
   );
@@ -60,7 +64,15 @@ export default function BacklightSimulator(props: Props) {
       if (!ctx) return;
 
       const startFrameProcessing = () =>
-        video.requestVideoFrameCallback(() => handleFrame(video, canvas, ctx));
+        video.requestVideoFrameCallback(() =>
+          handleFrame(
+            video,
+            canvas,
+            ctx,
+            horizontalDivisions,
+            verticalDivisions
+          )
+        );
       video.addEventListener('play', startFrameProcessing);
 
       const handleResize = () => {
@@ -75,7 +87,7 @@ export default function BacklightSimulator(props: Props) {
         window.removeEventListener('resize', handleResize);
       };
     },
-    [handleFrame, height, width]
+    [handleFrame, height, width, horizontalDivisions, verticalDivisions]
   );
 
   // TODO: we can move these styles into css later

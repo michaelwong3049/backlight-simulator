@@ -18,18 +18,17 @@ export function computeBacklightFrame(
     ctx.fillStyle = `rgb(${division.color[0]}, ${division.color[1]}, ${division.color[2]})`;
     ctx.fillRect(division.col, division.row, division.width, division.height);
   });
+
   return frame;
 }
 
-function computeDivisions(
+export function computeDivisions(
   frame: ImageData,
   videoDimensions: Dimensions,
   horizontalDivisions: number,
   verticalDivisions: number
 ) {
-  const divisions: Array<Division> = new Array(
-    horizontalDivisions * verticalDivisions
-  );
+  const divisions: Array<Division> = [];
 
   // TODO: this can be float, need to cast to int
   const canvasDivision: Dimensions = {
@@ -53,10 +52,10 @@ function computeDivisions(
       // if this top left division will be behind the video, skip
       const isFirstFit = row === 0 || col === 0;
       const isLastFit =
-        row + canvasDivision.height >= frame.height ||
-        col + canvasDivision.width >= frame.width;
-      const rowAboveVideo = row < videoTop || row > videoBottom;
-      const colAboveVideo = col < videoLeft || col > videoRight;
+        row === frame.height - canvasDivision.height ||
+        col === frame.width - canvasDivision.width;
+      const rowAboveVideo = row < videoTop || row >= videoBottom;
+      const colAboveVideo = col < videoLeft || col >= videoRight;
 
       const shouldDraw =
         isFirstFit || isLastFit || (rowAboveVideo && colAboveVideo);
@@ -87,7 +86,7 @@ function computeDivisions(
   return divisions;
 }
 
-function getAverageColor(
+export function getAverageColor(
   frame: ImageData,
   startRow: number,
   startCol: number,
@@ -104,8 +103,7 @@ function getAverageColor(
       res[2] += p[2];
     }
   }
-
-  const numPixels = (endRow - startRow + 1) * (endCol - startCol + 1);
+  const numPixels = (endRow - startRow) * (endCol - startCol);
   res[0] /= numPixels;
   res[1] /= numPixels;
   res[2] /= numPixels;

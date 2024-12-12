@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import './App.css';
-import BacklightSimulator from './BacklightSimulator';
-import { DivisionControls } from './DivisionControls';
+import '@/styles/App.css';
+import BacklightSimulator from './components/BacklightSimulator';
+import { DivisionControls } from './components/DivisionControls';
 import { Dimensions } from './types';
 
 function App() {
@@ -9,7 +9,7 @@ function App() {
   const [verticalDivisions, setVerticalDivisions] = useState(8);
   const [backlightDimensions, setBacklightDimensions] = useState<Dimensions>({
     // defaults taken from my local machine lol
-    width: 149,
+    width: 1497,
     height: 879,
   });
   const backlightContainerRef = useRef<HTMLDivElement>(null);
