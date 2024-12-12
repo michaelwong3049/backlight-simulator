@@ -1,4 +1,4 @@
-import { Dimensions, BacklightOptions, Division } from './types';
+import { Dimensions, BacklightOptions, Division } from '@/types';
 
 export function computeBacklightFrame(
   // TODO: remove ctx later, we should be able to do some assignments on frame.data
@@ -28,6 +28,7 @@ export function computeDivisions(
   horizontalDivisions: number,
   verticalDivisions: number
 ) {
+  // ok to dynamically size here, should remain small (< 64)
   const divisions: Array<Division> = [];
 
   // TODO: this can be float, need to cast to int
@@ -49,14 +50,12 @@ export function computeDivisions(
   // loop through all regions with offset, smart skip if we're in video range
   for (let row = 0; row < frame.height; row += canvasDivision.height) {
     for (let col = 0; col < frame.width; col += canvasDivision.width) {
-      // if this top left division will be behind the video, skip
       const isFirstFit = row === 0 || col === 0;
       const isLastFit =
         row === frame.height - canvasDivision.height ||
         col === frame.width - canvasDivision.width;
       const rowAboveVideo = row < videoTop || row >= videoBottom;
       const colAboveVideo = col < videoLeft || col >= videoRight;
-
       const shouldDraw =
         isFirstFit || isLastFit || (rowAboveVideo && colAboveVideo);
       if (!shouldDraw) continue;
@@ -111,6 +110,7 @@ export function getAverageColor(
   return res;
 }
 
+// TODO: convenience method, but if we're worried about perf we can remove and just direct index access
 function getPixel(frame: ImageData, row: number, col: number) {
   // TODO: could be a better index OOB handling
   if (row < 0 || row >= frame.height || col < 0 || col >= frame.width) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { computeBacklightFrame, getAverageColor } from '../colorManipulation';
-const videoSrc = require('./assets/videoplayback.mp4');
+const videoSrc = require('@/assets/videoplayback.mp4');
 
 interface Props {
   width: number;
@@ -23,6 +23,7 @@ export default function BacklightSimulator(props: Props) {
       verticalDivisions: number
     ) => {
       ctx.clearRect(0, 0, width, height);
+      // TODO: if we're only calculating divisions, we may not need to draw the whole image...
       ctx.drawImage(
         video,
         0,
@@ -60,6 +61,7 @@ export default function BacklightSimulator(props: Props) {
       const canvas = canvasRef.current;
       if (!video || !canvas) return;
 
+      // NOTE: we can disable alpha channel here which should save comp time
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
 
