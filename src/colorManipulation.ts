@@ -1,47 +1,43 @@
-interface Coordinates {
-    first_pixel_coordinate: number;
-    last_pixel_coordinate: number;
-}
+/**
+ * 
+ * @param blurFrame This is the dimensions of the portion between the two quadrants
+ * @param kernel_size This will be a number that represents ONE side (since its a square)
+ * @returns new ImageData with the same width and height of the blurFrame
+ */
+export function regionConvolution(blurFrame: ImageData, kernel_size: number) {
+    const frameCopy = new Uint8ClampedArray(blurFrame.data.length);
+    for(let row = 0; row < blurFrame.height; row++) { 
+        for(let col = 0; col < blurFrame.width; col++) {
+            let currentPixel = (row * blurFrame.width  + col) * 4;
+            let red = 0, blue = 0, green = 0, alpha = 255;
+            let layers = kernel_size % 3; // represents how many times you "wrap" currentPixel; i.e. 3x3 kernel wraps once, 5x5 wraps twice, etc.
+  
+            // starting the kernel at the top left of the kernel
+            for(let kernel_row = row - 1; kernel_row < kernel_row + 1; kernel_row++) { 
+                for(let kernel_col = col - 1; kernel_col < kernel_col + 1; kernel_col++) {
+                    let currentKernelPixel = (row * blurFrame.width + col) * 4;
+                    // checking if we are out of the top bounds
+                    if(row - (layers) < 0){
+                        continue;
+                    }
+                    
+                    // checking if we are out of the bottom bounds
+                    if(row + (layers) > blurFrame.height) {
+                        continue;
+                    }
+                    red += currentKernelPixel
+                    green += currentKernelPixel++
+                    blue += currentKernelPixel+2
+                    alpha += currentKernelPixel+3
+                }
+            }
 
-export function regionConvolution(frame: ImageData, region: Coordinates, kernel_size: number) {
-    const frameCopy = new Uint8ClampedArray(region.last_pixel_coordinate - region.first_pixel_coordinate)
-    for(let i = region.first_pixel_coordinate; i < region.last_pixel_coordinate; i+=4) {
-        let currentPixel = frame.data.slice(i, i+4);
-
-        let red = 0, green = 0, blue = 0, alpha = 255;
-
-        
-        
-        let top_left, top_middle, top_right;
-        try {
-            top_left = currentPixel.slice(i-frame.width-4, i-frame.width);
-            top_middle = currentPixel.slice(i-frame.width, i-frame.width+4);
-            top_right = currentPixel.slice(i-frame.width+4, i-frame.width+8);
-        } catch {
-            const black = new Uint8ClampedArray([0,0,0,255])
-            top_left = black;
-            top_middle = black;
-            top_right = black;
+            frameCopy[(currentPixel)] = red / kernel_size**2;
+            frameCopy[(currentPixel++)] = green / kernel_size**2;
+            frameCopy[(currentPixel+2)] = blue / kernel_size**2;
+            frameCopy[(currentPixel+3)] = alpha / kernel_size**2;
         }
-        let middle_left = currentPixel.slice(i-4, i);
-        let middle_right = currentPixel.slice(i+4, i+8);
-        let bot_left = currentPixel.slice(i+frame.width-4, i+frame.width);
-        let bot_middle = currentPixel.slice(i+frame.width, i+frame.width+4);
-        let bot_right = currentPixel.slice(i+frame.width+4, i+frame.width+8);
-
-        let surroundingPixels = [top_left, top_middle, top_right, middle_left, currentPixel, middle_right, bot_left, bot_middle, bot_right]
-        for(let pixel = 0; pixel < surroundingPixels.length; pixel++) {
-            red += surroundingPixels[pixel][0]
-            green += surroundingPixels[pixel][1]
-            blue += surroundingPixels[pixel][2]
-            alpha += surroundingPixels[pixel][3]
-        }
-
-        frameCopy[i] = red
-        frameCopy[i+1] = blue
-        frameCopy[i+2] = green
-        frameCopy[i+3] = alpha
     }
-    
-    return new ImageData(frameCopy, frame.width, frame.height)
+
+    return new ImageData(frameCopy, blurFrame.width, blurFrame.height)
 }
