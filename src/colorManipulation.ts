@@ -13,8 +13,8 @@ export function regionConvolution(blurFrame: ImageData, kernel_size: number) {
             let layers = kernel_size % 3; // represents how many times you "wrap" currentPixel; i.e. 3x3 kernel wraps once, 5x5 wraps twice, etc.
   
             // starting the kernel at the top left of the kernel
-            for(let kernel_row = row - 1; kernel_row < kernel_row + 1; kernel_row++) { 
-                for(let kernel_col = col - 1; kernel_col < kernel_col + 1; kernel_col++) {
+            for(let kernel_row = row-layers; kernel_row < kernel_row+layers; kernel_row++) { 
+                for(let kernel_col = col-layers; kernel_col < kernel_col+layers; kernel_col++) {
                     let currentKernelPixel = (row * blurFrame.width + col) * 4;
                     // checking if we are out of the top bounds
                     if(row - (layers) < 0){
