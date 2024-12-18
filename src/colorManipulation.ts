@@ -1,28 +1,41 @@
+/**
+ * - A function that is used to smooth the color transition between divisions
+ * @param frame is the default canvas that holds the divison width/length colors]
+ * - Defines the boundaries for region convolution
+ * @param startRow 
+ * @param startCol 
+ * @param endRow 
+ * @param endCol 
+ * @param kernel_size is how large your kernel convolution size is (higher = laggier but smoother transition)
+ * @returns an ImageData 
+ */
+
 export function regionConvolution(
+    frame: ImageData,
     startRow: number,
-    endRow: number,
     startCol: number,
+    endRow: number,
     endCol: number,
     kernel_size: number
 ): ImageData {
-    const frameCopy = new Uint8ClampedArray((endRow - startRow) * (endCol - startCol));
+    const frameCopy = new Uint8ClampedArray(frame.data.length);
     for(let row = startRow; row < endRow; row++) { 
         for(let col = startCol; col < endCol; col++) {
-            let currentPixel = (row * (endCol - col) + col) * 4;
+            let currentPixel = (row * frame.width + col) * 4;
             let red = 0, blue = 0, green = 0, alpha = 255;
-            let layers = kernel_size / 2;
+            let layers = Math.floor(kernel_size / 2);
 
             // starting the kernel at the top left of the kernel
-            for(let kernel_row = row-Math.floor(layers); kernel_row < kernel_row+Math.ceil(layers); kernel_row++) { 
-                for(let kernel_col = col-Math.floor(layers); kernel_col < kernel_col+Math.ceil(layers); kernel_col++) {
-                    let currentKernelPixel = (row * (endCol - startCol) + col) * 4;
+            for(let kernel_row = row-layers; kernel_row < row+layers+1; kernel_row++) { 
+                for(let kernel_col = col-layers; kernel_col < col+layers+1; kernel_col++) {
+                    let currentKernelPixel = (kernel_row * (frame.width) + kernel_col) * 4;
                     // checking if we are out of the top bounds
-                    if(row - (Math.floor(layers)) < 0){
+                    if(row - (layers) < 0){
                         continue;
                     }
                     
                     // checking if we are out of the bottom bounds
-                    if(row + (Math.ceil(layers)) > (endRow - startRow)) {
+                    if(row + (layers) > (endRow - startRow)) {
                         continue;
                     }
                     red += currentKernelPixel
