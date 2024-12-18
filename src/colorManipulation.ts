@@ -59,6 +59,7 @@ export function computeDivisions(
         col + canvasDivision.width >= frame.width;
       const rowAboveVideo = row < videoTop || row >= videoBottom;
       const colAboveVideo = col < videoLeft || col >= videoRight;
+
       const shouldDraw =
         isFirstFit || isLastFit || (rowAboveVideo && colAboveVideo);
       if (!shouldDraw) continue;
