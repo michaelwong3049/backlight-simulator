@@ -1,28 +1,28 @@
-/**
- * 
- * @param blurFrame This is the dimensions of the portion between the two quadrants
- * @param kernel_size This will be a number that represents ONE side (since its a square)
- * @returns new ImageData with the same width and height of the blurFrame
- */
-export function regionConvolution(blurFrame: ImageData, kernel_size: number) {
-    const frameCopy = new Uint8ClampedArray(blurFrame.data.length);
-    for(let row = 0; row < blurFrame.height; row++) { 
-        for(let col = 0; col < blurFrame.width; col++) {
-            let currentPixel = (row * blurFrame.width  + col) * 4;
+export function regionConvolution(
+    startRow: number,
+    endRow: number,
+    startCol: number,
+    endCol: number,
+    kernel_size: number
+): ImageData {
+    const frameCopy = new Uint8ClampedArray((endRow - startRow) * (endCol - startCol));
+    for(let row = startRow; row < endRow; row++) { 
+        for(let col = startCol; col < endCol; col++) {
+            let currentPixel = (row * (endCol - col) + col) * 4;
             let red = 0, blue = 0, green = 0, alpha = 255;
-            let layers = kernel_size % 3; // represents how many times you "wrap" currentPixel; i.e. 3x3 kernel wraps once, 5x5 wraps twice, etc.
-  
+            let layers = kernel_size / 2;
+
             // starting the kernel at the top left of the kernel
-            for(let kernel_row = row-layers; kernel_row < kernel_row+layers; kernel_row++) { 
-                for(let kernel_col = col-layers; kernel_col < kernel_col+layers; kernel_col++) {
-                    let currentKernelPixel = (row * blurFrame.width + col) * 4;
+            for(let kernel_row = row-Math.floor(layers); kernel_row < kernel_row+Math.ceil(layers); kernel_row++) { 
+                for(let kernel_col = col-Math.floor(layers); kernel_col < kernel_col+Math.ceil(layers); kernel_col++) {
+                    let currentKernelPixel = (row * (endCol - startCol) + col) * 4;
                     // checking if we are out of the top bounds
-                    if(row - (layers) < 0){
+                    if(row - (Math.floor(layers)) < 0){
                         continue;
                     }
                     
                     // checking if we are out of the bottom bounds
-                    if(row + (layers) > blurFrame.height) {
+                    if(row + (Math.ceil(layers)) > (endRow - startRow)) {
                         continue;
                     }
                     red += currentKernelPixel
@@ -32,12 +32,12 @@ export function regionConvolution(blurFrame: ImageData, kernel_size: number) {
                 }
             }
 
-            frameCopy[(currentPixel)] = red / kernel_size**2;
-            frameCopy[(currentPixel++)] = green / kernel_size**2;
-            frameCopy[(currentPixel+2)] = blue / kernel_size**2;
-            frameCopy[(currentPixel+3)] = alpha / kernel_size**2;
+            frameCopy[(currentPixel++)] = red / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = green / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = blue / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = alpha / kernel_size * kernel_size;
         }
     }
 
-    return new ImageData(frameCopy, blurFrame.width, blurFrame.height)
+    return new ImageData(frameCopy, (endRow - startRow), (endCol - startCol))
 }
