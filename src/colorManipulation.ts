@@ -11,10 +11,11 @@ export function computeBacklightFrame(
     frame,
     videoDimensions,
     opts.horizontalDivisions,
-    opts.verticalDivisions
+    opts.verticalDivisions,
+    false
   );
 
-  divisions.forEach((division) => {
+  divisions.forEach((division, idx) => {
     ctx.fillStyle = `rgb(${division.color[0]}, ${division.color[1]}, ${division.color[2]})`;
     ctx.fillRect(division.col, division.row, division.width, division.height);
   });
@@ -27,7 +28,8 @@ export function computeDivisions(
   frame: ImageData,
   videoDimensions: Dimensions,
   horizontalDivisions: number,
-  verticalDivisions: number
+  verticalDivisions: number,
+  debugColoring = false
 ) {
   // ok to dynamically size here, should remain small (< 64)
   const divisions: Array<Division> = [];
@@ -53,8 +55,8 @@ export function computeDivisions(
     for (let col = 0; col < frame.width; col += canvasDivision.width) {
       const isFirstFit = row === 0 || col === 0;
       const isLastFit =
-        row === frame.height - canvasDivision.height ||
-        col === frame.width - canvasDivision.width;
+        row + canvasDivision.height >= frame.height ||
+        col + canvasDivision.width >= frame.width;
       const rowAboveVideo = row < videoTop || row >= videoBottom;
       const colAboveVideo = col < videoLeft || col >= videoRight;
       const shouldDraw =
@@ -71,6 +73,11 @@ export function computeDivisions(
           col + canvasDivision.width
         )
       );
+      if (debugColoring) {
+        color[0] = isFirstFit ? 255 : 0;
+        color[1] = isLastFit ? 255 : 0;
+        color[2] = rowAboveVideo && colAboveVideo ? 255 : 0;
+      }
 
       divisions[divisionIdx++] = {
         row,

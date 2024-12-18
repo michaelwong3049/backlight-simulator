@@ -24,6 +24,7 @@ export default function BacklightSimulator(props: Props) {
     ) => {
       ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
+      // TODO: we could even potentially use an offscreen canvas to save on render times
       ctx.drawImage(
         video,
         0,
