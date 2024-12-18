@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { computeBacklightFrame } from './colorManipulation';
-import { regionConvolution } from './colorManipulation';
 const videoSrc = require('./assets/videoplayback.mp4');
+
+const computeBacklightFrame = (frame: ImageData) => {
+  return frame;
+};
 
 interface Props {}
 
@@ -15,8 +17,6 @@ export default function BacklightSimulator(props: Props) {
       canvas: HTMLCanvasElement,
       ctx: CanvasRenderingContext2D
     ) => {
-      if (video.paused) return;
-
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
       ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
 
