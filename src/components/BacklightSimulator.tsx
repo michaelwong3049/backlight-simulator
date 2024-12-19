@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { computeBacklightFrame, getAverageColor } from '../colorManipulation';
+import { computeBacklightFrame, regionConvolution } from '../colorManipulation';
 const videoSrc = require('@/assets/videoplayback.mp4');
 
 interface Props {
@@ -22,6 +22,8 @@ export default function BacklightSimulator(props: Props) {
       horizontalDivisions: number,
       verticalDivisions: number
     ) => {
+      if (video.paused) return;
+
       ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
       // TODO: we could even potentially use an offscreen canvas to save on render times

@@ -134,3 +134,73 @@ function getPixel(frame: ImageData, row: number, col: number) {
 }
 
 const EMPTY_PIXEL = [0, 0, 0, 255];
+
+/**
+ * - A function that is used to smooth the color transition between divisions
+ * @param frame is the default canvas that holds the divison width/length colors]
+ * - Defines the boundaries for region convolution
+ * @param startRow 
+ * @param startCol 
+ * @param endRow 
+ * @param endCol 
+ * @param kernel_size is how large your kernel convolution size is (higher = laggier but smoother transition)
+ * @returns an ImageData 
+ */
+
+export function regionConvolution(
+    frame: ImageData,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    kernel_size: number
+): ImageData {
+    const frameCopy = new Uint8ClampedArray(frame.data.length);
+    let layers = Math.floor(kernel_size / 2);
+    for(let row = startRow; row < endRow; row++) { 
+        for(let col = startCol; col < endCol; col++) {
+            let currentPixel = frame.data[(row * frame.width + col) * 4];
+
+            const result = convolveRegion(row, col, layers, frame, startRow, startCol, endRow, endCol);
+
+            frameCopy[(currentPixel++)] = result[0] / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = result[1] / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = result[2] / kernel_size * kernel_size;
+            frameCopy[(currentPixel++)] = result[3] / kernel_size * kernel_size;
+        }
+    }
+
+    return new ImageData(frameCopy, (endRow - startRow), (endCol - startCol))
+}
+
+export function convolveRegion(
+    row: number,
+    col: number, 
+    layers: number, 
+    frame: ImageData,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+) {
+    let red = 0, blue = 0, green = 0, alpha = 255;
+    for(let kernel_row = row-layers; kernel_row < row+layers+1; kernel_row++) { 
+        for(let kernel_col = col-layers; kernel_col < col+layers+1; kernel_col++) {
+            const rowOutOfBounds =  row - layers < startRow || row + layers >= endRow;
+            const columnOutOfBounds = col - layers < startCol || col + layers >= endCol;
+            if(rowOutOfBounds || columnOutOfBounds){
+                continue;
+            }
+
+            let currentKernelPixel = frame.data[(kernel_row * (frame.width) + kernel_col) * 4];
+
+            red += frame.data[currentKernelPixel++];
+            green += frame.data[currentKernelPixel++];
+            blue += frame.data[currentKernelPixel++];
+            alpha += frame.data[currentKernelPixel++];
+        }
+    }
+    
+    return [red, green, blue, alpha]
+}
+
