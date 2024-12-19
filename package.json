@@ -22,6 +22,11 @@
     "test": "craco test",
     "eject": "craco eject"
   },
+  "jest": {
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
+  },
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -42,6 +47,7 @@
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-    "@craco/craco": "^7.1.0"
+    "@craco/craco": "^7.1.0",
+    "canvas": "^2.11.2"
   }
 }
