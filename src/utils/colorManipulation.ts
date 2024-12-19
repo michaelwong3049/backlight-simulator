@@ -181,15 +181,8 @@ export function convolveRegion(
   endRow: number,
   endCol: number
 ) {
-  let red = 0,
-    blue = 0,
-    green = 0,
-    alpha = 255;
-  for (
-    let kernel_row = row - layers;
-    kernel_row < row + layers + 1;
-    kernel_row++
-  ) {
+  let red = 0, blue = 0, green = 0, alpha = 255;
+  for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (
       let kernel_col = col - layers;
       kernel_col < col + layers + 1;
