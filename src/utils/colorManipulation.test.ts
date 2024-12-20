@@ -28,6 +28,7 @@ describe('getAverageColor', () => {
     canvas.width = 100;
     canvas.height = 100;
     ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
 
   // Use a `test` or `it` block to run an actual test. The string is just a brief
@@ -49,26 +50,67 @@ describe('getAverageColor', () => {
     expect(actual).toEqual(expected);
   });
 
-  // lol i ran this test and found a bug
   it('averages two colors', () => {
-    // draw half black, half white
     ctx.fillStyle = 'rgb(0, 0, 0)';
-    ctx.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
+    ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
     ctx.fillStyle = 'rgb(255, 255, 255)';
     ctx.fillRect(
       canvas.width / 2,
-      canvas.height / 2,
+      0,
       canvas.width,
       canvas.height
     );
 
     const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    // average color should just be gray
     const expected = [128, 128, 128, 255];
     const actual = getAverageColor(frame, 0, 0, canvas.height, canvas.width);
+    expect(actual).toEqual(expected);
+  });
 
-    // wut it's not gray
+  it('averages four colors', () => {
+    // top left quadrant
+    ctx.fillStyle = 'rgb(255, 0, 0)';
+    ctx.fillRect(0, 0, canvas.width / 4, canvas.height / 4);
+
+    // top right quadrant
+    ctx.fillStyle = 'rgb(0, 255, 0)';
+    ctx.fillRect(canvas.width / 2, 0, canvas.width /4, canvas.height/4);
+
+    // bottom left quadrant
+    ctx.fillStyle = 'rgb(0, 0, 255)';
+    ctx.fillRect(0, canvas.height /2, canvas.width /4, canvas.height / 4);
+
+    // bottom right quadrant
+    ctx.fillStyle = 'rgb(0, 0, 0)';
+    ctx.fillRect(canvas.width / 2, canvas.height / 2, canvas.width/ 4, canvas.height / 4);
+
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const expected = [16, 16, 16, 255];
+    const actual = getAverageColor(frame, 0, 0, canvas.height, canvas.width);
+    expect(actual).toEqual(expected);
+  });
+
+  it('does not average colors outside of the region', () => {
+    // draw the bg red
+    ctx.fillStyle = 'rgb(255, 0, 0)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // draw a green square in the center
+    ctx.fillStyle = 'rgb(0, 255, 0)';
+    ctx.fillRect(
+      canvas.width / 4,
+      canvas.width / 4,
+      canvas.width / 2,
+      canvas.height / 2);
+
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const expected = [0, 255, 0, 255];
+    const actual = getAverageColor(
+      frame,
+      canvas.height / 4,
+      canvas.width / 4,
+      canvas.height * 3 / 4,
+      canvas.width * 3 / 4);
     expect(actual).toEqual(expected);
   });
 });

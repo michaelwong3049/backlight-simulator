@@ -116,11 +116,11 @@ export function getAverageColor(
       res[BLUE_CHANNEL_OFFSET] += frame.data[pixelIdx + BLUE_CHANNEL_OFFSET];
     }
   }
-  const numPixels = (endRow - startRow) * (endCol - startCol);
-  res[RED_CHANNEL_OFFSET] /= numPixels;
-  res[GREEN_CHANNEL_OFFSET] /= numPixels;
-  res[BLUE_CHANNEL_OFFSET] /= numPixels;
 
+  const numPixels = (endRow - startRow) * (endCol - startCol);
+  res[RED_CHANNEL_OFFSET] = Math.round(res[RED_CHANNEL_OFFSET] / numPixels);
+  res[GREEN_CHANNEL_OFFSET] = Math.round(res[GREEN_CHANNEL_OFFSET] / numPixels);
+  res[BLUE_CHANNEL_OFFSET] = Math.round(res[BLUE_CHANNEL_OFFSET] / numPixels);
   return res;
 }
 
