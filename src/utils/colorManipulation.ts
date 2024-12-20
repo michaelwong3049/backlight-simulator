@@ -1,4 +1,4 @@
-import { Dimensions, BacklightOptions, Division } from '@/types';
+import { Dimensions, BacklightOptions, Division, Position } from '@/types';
 import {
   BLUE_CHANNEL_OFFSET,
   GREEN_CHANNEL_OFFSET,
@@ -46,13 +46,7 @@ export function computeDivisions(
   };
 
   // dynamically figure out the padding around the video assuming the video is centered
-  const verticalPadding = (frame.height - videoDimensions.height) / 2;
-  const horizontalPadding = (frame.width - videoDimensions.width) / 2;
-
-  const videoTop = verticalPadding;
-  const videoBottom = frame.height - verticalPadding;
-  const videoLeft = horizontalPadding;
-  const videoRight = frame.width - horizontalPadding;
+  const videoPosition = findVideoPositionOnCanvas({ height: frame.height, width: frame.width}, videoDimensions);
 
   let divisionIdx = 0;
   // loop through all regions with offset, smart skip if we're in video range
@@ -62,8 +56,8 @@ export function computeDivisions(
       const isLastFit =
         row + canvasDivision.height >= frame.height ||
         col + canvasDivision.width >= frame.width;
-      const rowAboveVideo = row < videoTop || row >= videoBottom;
-      const colAboveVideo = col < videoLeft || col >= videoRight;
+      const rowAboveVideo = row < videoPosition.top || row >= videoPosition.bottom;
+      const colAboveVideo = col < videoPosition.left || col >= videoPosition.right;
 
       const shouldDraw =
         isFirstFit || isLastFit || (rowAboveVideo && colAboveVideo);
@@ -122,6 +116,17 @@ export function getAverageColor(
   res[GREEN_CHANNEL_OFFSET] = Math.round(res[GREEN_CHANNEL_OFFSET] / numPixels);
   res[BLUE_CHANNEL_OFFSET] = Math.round(res[BLUE_CHANNEL_OFFSET] / numPixels);
   return res;
+}
+
+export function findVideoPositionOnCanvas(canvasDimensions: Dimensions, videoDimensions: Dimensions): Position {
+  const verticalPadding = (canvasDimensions.height - videoDimensions.height) / 2;
+  const horizontalPadding = (canvasDimensions.width - videoDimensions.width) / 2;
+  return {
+    top: verticalPadding,
+    right: canvasDimensions.width - horizontalPadding,
+    bottom: canvasDimensions.height - verticalPadding,
+    left: horizontalPadding
+  }
 }
 
 /**

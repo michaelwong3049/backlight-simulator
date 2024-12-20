@@ -3,6 +3,13 @@ export interface Dimensions {
   height: number;
 }
 
+export interface Position {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
 export interface BacklightOptions {
   horizontalDivisions: number;
   verticalDivisions: number;
