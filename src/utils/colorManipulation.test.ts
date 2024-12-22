@@ -16,7 +16,10 @@ import {
   computeDivisions,
   findVideoPositionOnCanvas,
   getAverageColor,
+  regionConvolution
 } from "@/utils/colorManipulation";
+import { BrowserCompatibleImageData } from "@/utils/BrowserCompatibleImageData";
+global.ImageData = BrowserCompatibleImageData; 
 
 // Use a describe block to group related tests, e.g. all of the tests for the
 // `getAverageColor` function are in the same describe.
@@ -130,7 +133,7 @@ describe("colorManipulation", () => {
       const videoDimensions: Dimensions = { height: 100, width: 100 };
 
       // need color to complete the type, but not being tested here
-      const expected: Array<Division> = [
+    const expected: Array<Division> = [
         {
           row: 0,
           col: 0,
@@ -228,4 +231,28 @@ describe("colorManipulation", () => {
       expect(actual).toEqual(expected);
     });
   });
+
+  describe("regionConvolution", () => {
+     it("convolves a region based on the kernel size given", () => {
+      //cut the left half to be red
+      ctx.fillStyle = "rgb(255,0,0)";
+      ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
+
+      //cut the right half to be blue
+      ctx.fillStyle = "rgb(0,0,255)";
+      ctx.fillRect(canvas.width / 2, 0, canvas.width, canvas.height);
+
+      const frame = ctx.getImageData(0,0, canvas.width, canvas.height);
+
+      const actual = regionConvolution(
+        frame,
+        0,
+        0,
+        100,
+        100,
+        10
+      );
+
+     })
+  })
 });

@@ -151,10 +151,9 @@ export function regionConvolution(
 ): ImageData {
   const frameCopy = new Uint8ClampedArray(frame.data.length);
   let layers = Math.floor(kernel_size / 2);
+
   for (let row = startRow; row < endRow; row++) {
     for (let col = startCol; col < endCol; col++) {
-      let currentPixel = frame.data[(row * frame.width + col) * 4];
-
       const result = convolveRegion(
         row,
         col,
@@ -166,14 +165,16 @@ export function regionConvolution(
         endCol
       );
 
-      frameCopy[currentPixel++] = (result[0] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[1] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[2] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[3] / kernel_size) * kernel_size;
+      let index = (row * frame.width + col) * 4;
+      
+      frameCopy[index] = result[0] / (kernel_size * kernel_size);
+      frameCopy[index + 1] = result[1] / (kernel_size * kernel_size);
+      frameCopy[index + 2] = result[2] / (kernel_size * kernel_size);
+      frameCopy[index + 3] = 255;
     }
   }
-
-  return new ImageData(frameCopy, endRow - startRow, endCol - startCol);
+  
+  return new ImageData(frameCopy, endRow - startRow, endCol - startCol); //i think that the height and width are off
 }
 
 export function convolveRegion(
@@ -186,25 +187,21 @@ export function convolveRegion(
   endRow: number,
   endCol: number
 ) {
+
   let red = 0, blue = 0, green = 0, alpha = 255;
   for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (let kernel_col = col - layers; kernel_col < col + layers + 1; kernel_col++) {
       const rowOutOfBounds = row - layers < startRow || row + layers >= endRow;
-      const columnOutOfBounds =
-        col - layers < startCol || col + layers >= endCol;
+      const columnOutOfBounds = col - layers < startCol || col + layers >= endCol;
       if (rowOutOfBounds || columnOutOfBounds) {
         continue;
       }
 
-      let currentKernelPixel =
-        frame.data[(kernel_row * frame.width + kernel_col) * 4];
-
-      red += frame.data[currentKernelPixel++];
-      green += frame.data[currentKernelPixel++];
-      blue += frame.data[currentKernelPixel++];
-      alpha += frame.data[currentKernelPixel++];
+      red += frame.data[(kernel_row * frame.width + kernel_col) * 4],
+      green += frame.data[((kernel_row * frame.width + kernel_col) * 4) +1],
+      blue += frame.data[((kernel_row * frame.width + kernel_col) * 4) +2]
     }
   }
 
-  return [red, green, blue, alpha];
+  return [red, green, blue];
 }
