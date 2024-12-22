@@ -124,70 +124,25 @@ describe("colorManipulation", () => {
   });
 
   describe("computeDivisions", () => {
-    it("return even divisions", () => {
+    it("returns even divisions", () => {
       const verticalDivisions = 4,
         horizontalDivisions = 2;
       const videoDimensions: Dimensions = { height: 100, width: 100 };
 
       // need color to complete the type, but not being tested here
-      const expected: Array<Division> = [
-        {
-          row: 0,
-          col: 0,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 0,
-          col: 50,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 25,
-          col: 0,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 25,
-          col: 50,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 50,
-          col: 0,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 50,
-          col: 50,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 75,
-          col: 0,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-        {
-          row: 75,
-          col: 50,
-          width: 50,
-          height: 25,
-          color: new Uint8ClampedArray([255, 0, 0, 255]),
-        },
-      ];
+      const dummyColor = new Uint8ClampedArray([255, 0, 0, 255]);
+      const expected: Array<Division> = [];
+      for (let vDivision = 0; vDivision < verticalDivisions; vDivision++) {
+        for (let hDivision = 0; hDivision < horizontalDivisions; hDivision++) {
+          expected.push({
+            row: vDivision * canvas.height / verticalDivisions,
+            col: hDivision * canvas.width / horizontalDivisions,
+            width: canvas.width / horizontalDivisions,
+            height: canvas.height / verticalDivisions,
+            color: dummyColor
+          });
+        }
+      }
 
       const areDivisionsEqual = (d1: Division, d2: Division) =>
         d1.width === d2.width &&
