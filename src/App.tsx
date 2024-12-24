@@ -24,7 +24,9 @@ function App() {
         height: backlightContainer.clientHeight,
       });
     window.addEventListener('resize', handleResize);
-    handleResize();    return () => window.removeEventListener('resize', handleResize);
+    handleResize();    
+    
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   return (
