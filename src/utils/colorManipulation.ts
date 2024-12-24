@@ -167,14 +167,14 @@ export function regionConvolution(
 
       let index = (row * frame.width + col) * 4;
       
-      frameCopy[index] = result[0] / (kernel_size * kernel_size);
-      frameCopy[index + 1] = result[1] / (kernel_size * kernel_size);
-      frameCopy[index + 2] = result[2] / (kernel_size * kernel_size);
+      frameCopy[index] = result[RED_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + 1] = result[GREEN_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + 2] = result[BLUE_CHANNEL_OFFSET] / (kernel_size * kernel_size);
       frameCopy[index + 3] = 255;
     }
   }
   
-  return new ImageData(frameCopy, endRow - startRow, endCol - startCol); //i think that the height and width are off
+  return new ImageData(frameCopy, endRow - startRow, endCol - startCol); 
 }
 
 export function convolveRegion(
@@ -197,9 +197,10 @@ export function convolveRegion(
         continue;
       }
 
-      red += frame.data[(kernel_row * frame.width + kernel_col) * 4]
-      green += frame.data[((kernel_row * frame.width + kernel_col) * 4) +1]
-      blue += frame.data[((kernel_row * frame.width + kernel_col) * 4) +2]
+      let index = (kernel_row * frame.width + kernel_col) * 4;
+      red += frame.data[index];
+      green += frame.data[index + 1];
+      blue += frame.data[index + 2];
 
     }
   }
