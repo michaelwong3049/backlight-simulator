@@ -191,15 +191,16 @@ export function convolveRegion(
   let red = 0, blue = 0, green = 0, alpha = 255;
   for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (let kernel_col = col - layers; kernel_col < col + layers + 1; kernel_col++) {
-      const rowOutOfBounds = row - layers < startRow || row + layers >= endRow;
-      const columnOutOfBounds = col - layers < startCol || col + layers >= endCol;
+      const rowOutOfBounds = kernel_row < startRow || kernel_row >= endRow;
+      const columnOutOfBounds = kernel_col < startCol || kernel_col >= endCol;
       if (rowOutOfBounds || columnOutOfBounds) {
         continue;
       }
 
-      red += frame.data[(kernel_row * frame.width + kernel_col) * 4],
-      green += frame.data[((kernel_row * frame.width + kernel_col) * 4) +1],
+      red += frame.data[(kernel_row * frame.width + kernel_col) * 4]
+      green += frame.data[((kernel_row * frame.width + kernel_col) * 4) +1]
       blue += frame.data[((kernel_row * frame.width + kernel_col) * 4) +2]
+
     }
   }
 

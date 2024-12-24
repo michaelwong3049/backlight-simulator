@@ -12,12 +12,14 @@
 // Create-React-App docs: https://create-react-app.dev/docs/running-tests/
 
 import { Dimensions, Division, Position } from "@/types";
+import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/utils/constants";
 import {
   computeDivisions,
   findVideoPositionOnCanvas,
   getAverageColor,
   regionConvolution
 } from "@/utils/colorManipulation";
+import { EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE, EXPECTED_TEST_CASE_1_AFTER_CONVOLVE } from "./testingData";
 import { BrowserCompatibleImageData } from "@/utils/BrowserCompatibleImageData";
 global.ImageData = BrowserCompatibleImageData; 
 
@@ -234,6 +236,9 @@ describe("colorManipulation", () => {
 
   describe("regionConvolution", () => {
      it("convolves a region based on the kernel size given", () => {
+      canvas.width = 12;
+      canvas.height = 12;
+
       //cut the left half to be red
       ctx.fillStyle = "rgb(255,0,0)";
       ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
@@ -243,16 +248,19 @@ describe("colorManipulation", () => {
       ctx.fillRect(canvas.width / 2, 0, canvas.width, canvas.height);
 
       const frame = ctx.getImageData(0,0, canvas.width, canvas.height);
-
+      expect(Array.from(frame.data)).toStrictEqual(Array.from(EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE));
+      
       const actual = regionConvolution(
         frame,
         0,
         0,
-        100,
-        100,
-        10
+        canvas.height,
+        canvas.width,
+        3
       );
 
-     })
+      expect(Array.from(actual.data)).toEqual(Array.from(EXPECTED_TEST_CASE_1_AFTER_CONVOLVE));
+
+    })
   })
 });
