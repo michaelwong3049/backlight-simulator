@@ -1,4 +1,4 @@
-import { Dimensions, BacklightOptions, Division, Position } from '@/types';
+import type { Dimensions, BacklightOptions, Division, Position } from '@/types';
 import {
   BLUE_CHANNEL_OFFSET,
   GREEN_CHANNEL_OFFSET,

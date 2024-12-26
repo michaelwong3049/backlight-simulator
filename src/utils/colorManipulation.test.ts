@@ -11,7 +11,7 @@
 // Run tests in an interactive terminal with `npm test`. Learn more at the
 // Create-React-App docs: https://create-react-app.dev/docs/running-tests/
 
-import { Dimensions, Division, Position } from "@/types";
+import type { Dimensions, Division, Position } from "@/types";
 import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/utils/constants";
 import {
   computeDivisions,
@@ -19,7 +19,7 @@ import {
   getAverageColor,
   regionConvolution
 } from "@/utils/colorManipulation";
-import { EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE, EXPECTED_TEST_CASE_1_AFTER_CONVOLVE } from "./testingData";
+import { EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE, EXPECTED_TEST_CASE_1_AFTER_CONVOLVE } from "@/utils/testingData";
 import { BrowserCompatibleImageData } from "@/utils/BrowserCompatibleImageData";
 global.ImageData = BrowserCompatibleImageData; 
 
