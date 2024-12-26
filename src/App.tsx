@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import '@/styles/App.css';
 import BacklightSimulator from '@/components/BacklightSimulator';
 import { DivisionControls } from '@/components/DivisionControls';
-import { Dimensions } from '@/types';
+import type { Dimensions } from '@/types';
 
 function App() {
   const [horizontalDivisions, setHorizontalDivisions] = useState(3);
