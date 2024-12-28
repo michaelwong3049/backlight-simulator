@@ -1,5 +1,6 @@
 import type { Dimensions, BacklightOptions, Division, Position } from '@/types';
 import {
+  ALPHA_CHANNEL_OFFSET,
   BLUE_CHANNEL_OFFSET,
   GREEN_CHANNEL_OFFSET,
   RED_CHANNEL_OFFSET,
@@ -168,9 +169,9 @@ export function regionConvolution(
       let index = (row * frame.width + col) * 4;
       
       frameCopy[index] = result[RED_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      frameCopy[index + 1] = result[GREEN_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      frameCopy[index + 2] = result[BLUE_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      frameCopy[index + 3] = 255;
+      frameCopy[index + GREEN_CHANNEL_OFFSET] = result[GREEN_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + BLUE_CHANNEL_OFFSET] = result[BLUE_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + ALPHA_CHANNEL_OFFSET] = 255;
     }
   }
   
