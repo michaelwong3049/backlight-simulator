@@ -248,10 +248,10 @@ describe("colorManipulation", () => {
       ctx.fillRect(canvas.width / 2, 0, canvas.width, canvas.height);
 
       const frame = ctx.getImageData(0,0, canvas.width, canvas.height);
-
-      // Jest has troubles comparing the data from a TypedArray (in this scenario, the frame.data) to the 
-      // test case before the convolution. To fix this, we have change each of the arrays to a normal array,
-      // and there we can compare the values from each array to see if they match up.
+      
+      // Array.from() is required on both arrays in order to compare the core values of the arrays.
+      // This is required since the canvas package internal structure is differnet than the DOM canvas.
+      // By attempting to just compare frame.data and the expected test case, it would fail since they are different.
       expect(Array.from(frame.data)).toStrictEqual(Array.from(EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE));
       
       const actual = regionConvolution(
