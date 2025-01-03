@@ -1,5 +1,6 @@
-import { Dimensions, BacklightOptions, Division, Position } from '@/types';
+import type { Dimensions, BacklightOptions, Division, Position } from '@/types';
 import {
+  ALPHA_CHANNEL_OFFSET,
   BLUE_CHANNEL_OFFSET,
   GREEN_CHANNEL_OFFSET,
   RED_CHANNEL_OFFSET,
@@ -151,10 +152,9 @@ export function regionConvolution(
 ): ImageData {
   const frameCopy = new Uint8ClampedArray(frame.data.length);
   let layers = Math.floor(kernel_size / 2);
+
   for (let row = startRow; row < endRow; row++) {
     for (let col = startCol; col < endCol; col++) {
-      let currentPixel = frame.data[(row * frame.width + col) * 4];
-
       const result = convolveRegion(
         row,
         col,
@@ -166,14 +166,16 @@ export function regionConvolution(
         endCol
       );
 
-      frameCopy[currentPixel++] = (result[0] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[1] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[2] / kernel_size) * kernel_size;
-      frameCopy[currentPixel++] = (result[3] / kernel_size) * kernel_size;
+      let index = (row * frame.width + col) * 4;
+      
+      frameCopy[index] = result[RED_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + GREEN_CHANNEL_OFFSET] = result[GREEN_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + BLUE_CHANNEL_OFFSET] = result[BLUE_CHANNEL_OFFSET] / (kernel_size * kernel_size);
+      frameCopy[index + ALPHA_CHANNEL_OFFSET] = 255;
     }
   }
-
-  return new ImageData(frameCopy, endRow - startRow, endCol - startCol);
+  
+  return new ImageData(frameCopy, endRow - startRow, endCol - startCol); 
 }
 
 export function convolveRegion(
@@ -186,25 +188,23 @@ export function convolveRegion(
   endRow: number,
   endCol: number
 ) {
+
   let red = 0, blue = 0, green = 0, alpha = 255;
   for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (let kernel_col = col - layers; kernel_col < col + layers + 1; kernel_col++) {
-      const rowOutOfBounds = row - layers < startRow || row + layers >= endRow;
-      const columnOutOfBounds =
-        col - layers < startCol || col + layers >= endCol;
+      const rowOutOfBounds = kernel_row < startRow || kernel_row >= endRow;
+      const columnOutOfBounds = kernel_col < startCol || kernel_col >= endCol;
       if (rowOutOfBounds || columnOutOfBounds) {
         continue;
       }
 
-      let currentKernelPixel =
-        frame.data[(kernel_row * frame.width + kernel_col) * 4];
+      let index = (kernel_row * frame.width + kernel_col) * 4;
+      red += frame.data[index];
+      green += frame.data[index + 1];
+      blue += frame.data[index + 2];
 
-      red += frame.data[currentKernelPixel++];
-      green += frame.data[currentKernelPixel++];
-      blue += frame.data[currentKernelPixel++];
-      alpha += frame.data[currentKernelPixel++];
     }
   }
 
-  return [red, green, blue, alpha];
+  return [red, green, blue];
 }
