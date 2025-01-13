@@ -21,71 +21,54 @@ export function computeBacklightFrame(
     opts.verticalDivisions,
     false
   );
-  const oneFourthDivWidth = Math.round(divisions[0].width / 4);
-  const oneFourthDivHeight = Math.round(divisions[0].height / 4);
+  const convolutionRegion: Dimensions = { width: Math.round(divisions[0].width / 2), height: Math.round(divisions[0].height / 2) };
 
-  for(let div = 0; div < divisions.length; div += 2) {
+  // setting the colors for each division first
+  for(let div = 0; div < divisions.length; div++) {
     const currDiv = divisions[div];
-    const nextDiv = divisions[div + 1];
 
-    // setting all the divs to hav the averaged colors
-    for (let row = currDiv.row; row < currDiv.row + currDiv.height; row++) {
-      for (let col = currDiv.col; col < currDiv.col + currDiv.width; col++) {
+    for(let row = currDiv.row; row < currDiv.row + currDiv.height; row++) {
+      for(let col = currDiv.col; col < currDiv.col + currDiv.width; col++) {
         const frameIndex = (row * frame.width + col) * 4;
-
+      
         newFrame[frameIndex + RED_CHANNEL_OFFSET] = currDiv.color[RED_CHANNEL_OFFSET];
         newFrame[frameIndex + GREEN_CHANNEL_OFFSET] = currDiv.color[GREEN_CHANNEL_OFFSET];
         newFrame[frameIndex + BLUE_CHANNEL_OFFSET] = currDiv.color[BLUE_CHANNEL_OFFSET];
         newFrame[frameIndex + ALPHA_CHANNEL_OFFSET] = currDiv.color[ALPHA_CHANNEL_OFFSET];
       }
     }
-
-    // set the nextDiv to have its respective average color
-    for (let row = nextDiv.row; row < nextDiv.row + nextDiv.height; row++) {
-      for (let col = nextDiv.col; col < nextDiv.col + nextDiv.width; col++) {
-        const frameIndex = (row * frame.width + col) * 4;
-
-        newFrame[frameIndex + RED_CHANNEL_OFFSET] = nextDiv.color[RED_CHANNEL_OFFSET];
-        newFrame[frameIndex + GREEN_CHANNEL_OFFSET] = nextDiv.color[GREEN_CHANNEL_OFFSET];
-        newFrame[frameIndex + BLUE_CHANNEL_OFFSET] = nextDiv.color[BLUE_CHANNEL_OFFSET];
-        newFrame[frameIndex + ALPHA_CHANNEL_OFFSET] = nextDiv.color[ALPHA_CHANNEL_OFFSET];
-      }
-    }
-    
-    // attempting to call regionConvolution to the right at the top row
-    if(!(nextDiv.col + nextDiv.width >= frame.width)) {
-      regionConvolution(frame, newFrame, currDiv.row, nextDiv.col - oneFourthDivWidth, currDiv.row + currDiv.height, nextDiv.col + oneFourthDivWidth, 3);
-    }
-
   }
-  /**
-   * SECOND POSSIBLE METHOD FOR CALLING REGIONCONVOLUTION:
-   * after coloring all of the divisions to their respective average colors,
-   * we can call region convolution on ALL divisons in the DOWN and RIGHT
-   * directions UNLESS they are touching the right or bottom side, if they do 
-   * then we can call it either just going down or to the right respectively.
-   */
-  // setting the colors for each division first
-  // for(let div = 0; div < divisions.length; div++) {
-  //   const currDiv = divisions[div];
+  
+  // convolve regions
+  for(let div = 0; div < divisions.length - 1; div++) {
+    let currDiv = divisions[div];
+    let nextDiv = divisions[div + 1];
 
-  //   for(let row = currDiv.row; row < currDiv.row + currDiv.height; row++) {
-  //     for(let col = currDiv.col; col < currDiv.col + currDiv.width; col++) {
-  //       const frameIndex = (row * frame.width + col) * 4;
-      
-  //       newFrame[frameIndex + RED_CHANNEL_OFFSET] = currDiv.color[RED_CHANNEL_OFFSET];
-  //       newFrame[frameIndex + GREEN_CHANNEL_OFFSET] = currDiv.color[GREEN_CHANNEL_OFFSET];
-  //       newFrame[frameIndex + BLUE_CHANNEL_OFFSET] = currDiv.color[BLUE_CHANNEL_OFFSET];
-  //       newFrame[frameIndex + ALPHA_CHANNEL_OFFSET] = currDiv.color[ALPHA_CHANNEL_OFFSET];
-  //     }
-  //   }
-  // }
+    // convolve down and right as long as we are not on the right side
+    if(currDiv.col < nextDiv.col) {
+      regionConvolution(
+        frame,
+        newFrame,
+        currDiv.row,
+        nextDiv.col - Math.round(convolutionRegion.width / 2),
+        nextDiv.row + nextDiv.height,
+        nextDiv.col + Math.round(convolutionRegion.width / 2),
+        3
+      )
+    }
 
-  // for(let div = 0; div < divisions.length; div++) {
-  //   let currDiv = divisions[div];
-  //   let nextDiv = divisions[div + 1];
-  // }
-
+    if(currDiv.row + currDiv.height + convolutionRegion.height <= frame.height) {
+      regionConvolution(
+        frame,
+        newFrame,
+        currDiv.row + convolutionRegion.height,
+        currDiv.col,
+        currDiv.row + currDiv.height + convolutionRegion.height,
+        currDiv.col + currDiv.width,  
+        3
+      )
+    }
+  }
 
   return new ImageData(newFrame, frame.width, frame.height);
 }
@@ -265,13 +248,16 @@ export function convolveRegion(
   let red = 0, blue = 0, green = 0;
   for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (let kernel_col = col - layers; kernel_col < col + layers + 1; kernel_col++) {
-      const rowOutOfBounds = kernel_row < startRow || kernel_row >= endRow;
-      const columnOutOfBounds = kernel_col < startCol || kernel_col >= endCol;
-      if (rowOutOfBounds || columnOutOfBounds) {
-        continue;
-      }
+      const rowOutOfBounds = row < 0 || row >= frame.height;
+      const columnOutOfBounds = col < 0 || col >=  frame.width;
 
       let index = (kernel_row * frame.width + kernel_col) * 4;
+
+      if (rowOutOfBounds || columnOutOfBounds) {
+        if(rowOutOfBounds) index = (row * frame.width + kernel_col) * 4;
+        if(columnOutOfBounds) index = (kernel_row * frame.width + col) * 4;
+      }
+
       red += newFrame[index + RED_CHANNEL_OFFSET];
       green += newFrame[index + GREEN_CHANNEL_OFFSET];
       blue += newFrame[index + BLUE_CHANNEL_OFFSET];
