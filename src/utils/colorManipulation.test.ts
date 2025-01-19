@@ -212,14 +212,16 @@ describe("colorManipulation", () => {
   
       const actual = regionConvolution(
         frame,
-        newFrame,
+        new Uint8ClampedArray(newFrame),
         0,
         0,
         canvas.height,
         canvas.width,
-        3
+        3,
+        1,
+        4
       );
-
+     
       expect(Array.from(actual)).toStrictEqual(Array.from(EXPECTED_TEST_CASE_1_AFTER_CONVOLVE));
 
     })

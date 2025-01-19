@@ -38,7 +38,7 @@ export function computeBacklightFrame(
       }
     }
   }
-  
+ 
   // convolve regions
   for(let div = 0; div < divisions.length - 1; div++) {
     let currDiv = divisions[div];
@@ -47,7 +47,7 @@ export function computeBacklightFrame(
     // convolve down and right as long as we are not on the right side
     if(currDiv.col < nextDiv.col) {
       regionConvolution(
-        frame,
+        new ImageData(new Uint8ClampedArray(newFrame), frame.width, frame.height),
         newFrame,
         currDiv.row,
         nextDiv.col - Math.round(convolutionRegion.width / 2),
@@ -59,7 +59,7 @@ export function computeBacklightFrame(
 
     if(currDiv.row + currDiv.height + convolutionRegion.height <= frame.height) {
       regionConvolution(
-        frame,
+        new ImageData(new Uint8ClampedArray(newFrame), frame.width, frame.height),
         newFrame,
         currDiv.row + convolutionRegion.height,
         currDiv.col,
@@ -185,9 +185,9 @@ export function findVideoPositionOnCanvas(canvasDimensions: Dimensions, videoDim
 
 /**
  * - A function that is used to smooth the color transition between divisions
- * @param frame is the default canvas that holds the divison width/length colors]
+ * @param srcFrame is the default canvas that holds the divison width/length colors]
  * - Defines the boundaries for region convolution
- * @param newFrame is the complete convolved frame
+ * @param dstData is the complete convolved frame
  * @param startRow
  * @param startCol
  * @param endRow
@@ -197,14 +197,17 @@ export function findVideoPositionOnCanvas(canvasDimensions: Dimensions, videoDim
  */
 
 export function regionConvolution(
-  frame: ImageData, // we use frame to ease indexing using row and height
-  newFrame: Uint8ClampedArray, // we use newFrame to actually change values
+  srcFrame: ImageData, // we use frame to ease indexing using row and height
+  dstData: Uint8ClampedArray, // we use newFrame to actually change values
   startRow: number,
   startCol: number,
   endRow: number,
   endCol: number,
-  kernel_size: number
+  kernel_size: number,
+  debugRow?: number,
+  debugCol?: number
 ): Uint8ClampedArray {
+  
   let layers = Math.floor(kernel_size / 2);
 
   for (let row = startRow; row < endRow; row++) {
@@ -213,56 +216,74 @@ export function regionConvolution(
         row,
         col,
         layers,
-        frame,
-        newFrame,
+        srcFrame,
         startRow,
         startCol,
         endRow,
-        endCol
+        endCol,
+        debugRow,
+        debugCol
       );
+      
+      let index = (row * srcFrame.width + col) * 4;
 
-      let index = (row * frame.width + col) * 4;
-
-      newFrame[index] = result[RED_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      newFrame[index + GREEN_CHANNEL_OFFSET] = result[GREEN_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      newFrame[index + BLUE_CHANNEL_OFFSET] = result[BLUE_CHANNEL_OFFSET] / (kernel_size * kernel_size);
-      newFrame[index + ALPHA_CHANNEL_OFFSET] = 255;
+      dstData[index] = result[RED_CHANNEL_OFFSET];
+      dstData[index + GREEN_CHANNEL_OFFSET] = result[GREEN_CHANNEL_OFFSET];
+      dstData[index + BLUE_CHANNEL_OFFSET] = result[BLUE_CHANNEL_OFFSET];
+      dstData[index + ALPHA_CHANNEL_OFFSET] = 255;
     }
   }
 
-  return newFrame;
+  return dstData;
 }
 
 export function convolveRegion(
   row: number,
   col: number,
   layers: number,
-  frame: ImageData,
-  newFrame: Uint8ClampedArray,
+  srcFrame: ImageData,
   startRow: number,
   startCol: number,
   endRow: number,
-  endCol: number
+  endCol: number,
+  debugRow?: number,
+  debugCol?: number
 ) {
 
   let red = 0, blue = 0, green = 0;
+
+  const isDebugPosition = row === debugRow && col === debugCol;
+  if (isDebugPosition) {
+    console.log(`Analyzing position (${row},${col})`);
+  }
+
   for (let kernel_row = row - layers; kernel_row < row + layers + 1; kernel_row++) {
     for (let kernel_col = col - layers; kernel_col < col + layers + 1; kernel_col++) {
-      const rowOutOfBounds = row < 0 || row >= frame.height;
-      const columnOutOfBounds = col < 0 || col >=  frame.width;
+      const clampedRow = Math.min(Math.max(kernel_row, startRow), endRow - 1);
+      const clampedCol = Math.min(Math.max(kernel_col, startCol), endCol - 1);
 
-      let index = (kernel_row * frame.width + kernel_col) * 4;
+      const index = (clampedRow * srcFrame.width + clampedCol) * 4;
 
-      if (rowOutOfBounds || columnOutOfBounds) {
-        if(rowOutOfBounds) index = (row * frame.width + kernel_col) * 4;
-        if(columnOutOfBounds) index = (kernel_row * frame.width + col) * 4;
+      if (isDebugPosition) {
+        console.log(`Kernel pos (${kernel_row},${kernel_col}) -> Clamped (${clampedRow},${clampedCol}): RGB=[${
+          srcFrame.data[index]},${srcFrame.data[index+1]},${srcFrame.data[index+2]}]`);
       }
 
-      red += newFrame[index + RED_CHANNEL_OFFSET];
-      green += newFrame[index + GREEN_CHANNEL_OFFSET];
-      blue += newFrame[index + BLUE_CHANNEL_OFFSET];
+      red += srcFrame.data[index + RED_CHANNEL_OFFSET];
+      green += srcFrame.data[index + GREEN_CHANNEL_OFFSET];
+      blue += srcFrame.data[index + BLUE_CHANNEL_OFFSET];
     }
   }
 
-  return [red, green, blue];
+  if (isDebugPosition) {
+    console.log(`Final values: RGB=[${red},${green},${blue}]`);
+  }
+
+  const kernelArea = (layers * 2 + 1) * (layers * 2 + 1);
+
+  return [
+    Math.round(red / kernelArea),
+    Math.round(green / kernelArea), 
+    Math.round(blue / kernelArea)
+  ];
 }
