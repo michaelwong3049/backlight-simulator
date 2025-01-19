@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import {
-  computeBacklightFrame,
-  regionConvolution,
+  computeBacklightFrame
 } from '@/utils/colorManipulation';
 const videoSrc = require('@/assets/videoplayback.mp4');
 
@@ -52,7 +51,7 @@ export default function BacklightSimulator(props: Props) {
           verticalDivisions,
         }
       );
-      // ctx.putImageData(backlightFrame, 0, 0);
+      ctx.putImageData(backlightFrame, 0, 0);
 
       video.requestVideoFrameCallback(() =>
         handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
