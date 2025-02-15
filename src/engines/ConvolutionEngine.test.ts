@@ -12,7 +12,7 @@
 // Create-React-App docs: https://create-react-app.dev/docs/running-tests/
 
 import type { Dimensions, Division, Position } from "@/types";
-import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/utils/constants";
+import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/constants";
 import {
   computeDivisions,
   findVideoPositionOnCanvas,

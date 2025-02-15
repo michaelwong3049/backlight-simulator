@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; 
+import { GPUBufferUsage } from '@/constants';
 
 // Type of resource to create
 const ResourceType = {
@@ -7,22 +8,54 @@ const ResourceType = {
   BIND_GROUP: 'bindGroup'
 };
 
+interface GPUShaderConfig {
+  type: 'render' | 'compute';
+  entryPoint: string;
+  vertexEntryPoint?: string;
+  fragmentEntryPoint?: string;
+}
+ 
+interface GPURef {
+  device?: GPUDevice | null;
+  context?: GPUCanvasContext | null;
+  pipeline?: GPUComputePipeline | GPURenderPipeline | null;
+  bindGroups: Map<string, GPUBindGroup>;
+  buffers: Map<string, GPUBuffer>;
+  textures: Map<string, GPUTexture>;
+}
+
+interface UseWebGPUResource {
+  name: string;
+  type: 'buffer' | 'texture' | 'bindGroup';
+  size: number;
+  usage: GPUBufferUsage;
+  data?: Array<any>;
+}
+
+interface UseWebGPUParams {
+  shaderModule: string;
+  pipelineConfig: GPUShaderConfig;
+  resources: Array<UseWebGPUResource>;
+  workgroupSize: Array<number>;
+  canvas?: HTMLCanvasElement;
+}
+
 const useWebGPU = ({
   // Shader configuration
   shaderModule,
-  pipelineConfig = {},
+  pipelineConfig,
   
   // Resource definitions
-  resources = [],
+  resources,
   
   // Optional configurations
   workgroupSize = [64, 1, 1],
-  canvas = null,
-}) => {
+  canvas,
+}: UseWebGPUParams) => {
   const [gpuReady, setGpuReady] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<GPUError>();
   
-  const gpuRef = useRef({
+  const gpuRef = useRef<GPURef>({
     device: null,
     context: null,
     pipeline: null,
@@ -46,12 +79,13 @@ const useWebGPU = ({
 
         const device = await adapter.requestDevice();
         gpuRef.current.device = device;
+        if(!device) return;
 
         // Set up context if canvas is provided
         if (canvas) {
           const context = canvas.getContext('webgpu');
           const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-          context.configure({
+          context?.configure({
             device,
             format: canvasFormat,
             alphaMode: 'premultiplied',
@@ -70,31 +104,32 @@ const useWebGPU = ({
             layout: 'auto',
             compute: {
               module: shader,
-              entryPoint: pipelineConfig.computeEntryPoint || 'main',
+              entryPoint: pipelineConfig.entryPoint || 'main',
             }
           });
-        } else if (pipelineConfig.type === 'render') {
-          gpuRef.current.pipeline = device.createRenderPipeline({
-            layout: 'auto',
-            vertex: {
-              module: shader,
-              entryPoint: pipelineConfig.vertexEntryPoint || 'vertexMain',
-            },
-            fragment: {
-              module: shader,
-              entryPoint: pipelineConfig.fragmentEntryPoint || 'fragmentMain',
-              targets: [{
-                format: canvasFormat,
-              }],
-            },
-            primitive: pipelineConfig.primitive || {
-              topology: 'triangle-list',
-            },
-          });
         }
+        //  else if (pipelineConfig.type === 'render') {
+        //   gpuRef.current.pipeline = device.createRenderPipeline({
+        //     layout: 'auto',
+        //     vertex: {
+        //       module: shader,
+        //       entryPoint: pipelineConfig.vertexEntryPoint || 'vertexMain',
+        //     },
+        //     fragment: {
+        //       module: shader,
+        //       entryPoint: pipelineConfig.fragmentEntryPoint || 'fragmentMain',
+        //       targets: [{
+        //         format: canvasFormat ?? undefined,
+        //       }],
+        //     },
+        //     primitive: pipelineConfig.primitive || {
+        //       topology: 'triangle-list',
+        //     },
+        //   });
+        // }
 
         // Initialize resources
-        await initializeResources(resources, device);
+        await initializeResources(resources);
 
         device.addEventListener('uncapturederror', (event) => {
           setError(event.error);
@@ -102,7 +137,7 @@ const useWebGPU = ({
 
         setGpuReady(true);
       } catch (err) {
-        setError(err);
+        setError(err as GPUError);
         console.error('WebGPU initialization failed:', err);
       }
     };
@@ -112,28 +147,29 @@ const useWebGPU = ({
     return () => cleanup();
   }, [shaderModule]);
 
-  const initializeResources = async (resources, device) => {
+  const initializeResources = async (resources: Array<UseWebGPUResource>) => {
     for (const resource of resources) {
       switch (resource.type) {
         case ResourceType.BUFFER:
           createBuffer(resource);
           break;
-        case ResourceType.BIND_GROUP:
-          createBindGroup(resource);
-          break;
-        case ResourceType.TEXTURE:
-          createTexture(resource);
-          break;
+        // case ResourceType.BIND_GROUP:
+        //   createBindGroup(resource);
+        //   break;
+        // case ResourceType.TEXTURE:
+        //   createTexture(resource);
+        //   break;
       }
     }
   };
 
-  const createBuffer = ({ name, size, usage, data }) => {
+  const createBuffer = ({ name, size, usage, data }: UseWebGPUResource) => {
     const { device } = gpuRef.current;
+    if (!device) return;
     
     // Clean up existing buffer if it exists
     if (gpuRef.current.buffers.has(name)) {
-      gpuRef.current.buffers.get(name).destroy();
+      gpuRef.current.buffers.get(name)!.destroy();
     }
 
     const buffer = device.createBuffer({
@@ -151,57 +187,62 @@ const useWebGPU = ({
     return buffer;
   };
 
-  const createBindGroup = ({ name, layout, entries }) => {
-    const { device } = gpuRef.current;
-    const bindGroup = device.createBindGroup({
-      layout: layout || gpuRef.current.pipeline.getBindGroupLayout(0),
-      entries
-    });
-    gpuRef.current.bindGroups.set(name, bindGroup);
-    return bindGroup;
-  };
+  // const createBindGroup = ({ name, layout, entries }) => {
+  //   const { device, pipeline } = gpuRef.current;
+  //   if (!device || !pipeline) return;
 
-  const createTexture = ({ name, size, format, usage, data }) => {
-    const { device } = gpuRef.current;
+  //   const bindGroup = device.createBindGroup({
+  //     layout: layout || pipeline.getBindGroupLayout(0),
+  //     entries
+  //   });
+  //   gpuRef.current.bindGroups.set(name, bindGroup);
+  //   return bindGroup;
+  // };
+
+  // const createTexture = ({ name, size, format, usage, data }) => {
+  //   const { device } = gpuRef.current;
+  //   if (!device) return;
     
-    // Clean up existing texture if it exists
-    if (gpuRef.current.textures.has(name)) {
-      gpuRef.current.textures.get(name).destroy();
-    }
+  //   // Clean up existing texture if it exists
+  //   if (gpuRef.current.textures.has(name)) {
+  //     gpuRef.current.textures.get(name)!.destroy();
+  //   }
 
-    const texture = device.createTexture({
-      size,
-      format,
-      usage
-    });
+  //   const texture = device.createTexture({
+  //     size,
+  //     format,
+  //     usage
+  //   });
 
-    if (data) {
-      device.queue.writeTexture(
-        { texture },
-        data,
-        { bytesPerRow: size.width * 4 },
-        size
-      );
-    }
+  //   if (data) {
+  //     device.queue.writeTexture(
+  //       { texture },
+  //       data,
+  //       { bytesPerRow: size.width * 4 },
+  //       size
+  //     );
+  //   }
 
-    gpuRef.current.textures.set(name, texture);
-    return texture;
-  };
+  //   gpuRef.current.textures.set(name, texture);
+  //   return texture;
+  // };
 
   const dispatch = async (workgroupCount = [1, 1, 1], bindGroups = []) => {
     if (!gpuReady) return;
 
     const { device, pipeline } = gpuRef.current;
+    if (!device || !pipeline) return;
+
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
     
-    computePass.setPipeline(pipeline);
+    computePass.setPipeline(pipeline as GPUComputePipeline);
     
     bindGroups.forEach((group, index) => {
       computePass.setBindGroup(index, group);
     });
     
-    computePass.dispatchWorkgroups(...workgroupCount);
+    computePass.dispatchWorkgroups(1,1,1);
     computePass.end();
     
     device.queue.submit([commandEncoder.finish()]);
@@ -228,8 +269,8 @@ const useWebGPU = ({
     ...gpuRef.current,
     dispatch,
     createBuffer,
-    createBindGroup,
-    createTexture,
+    // createBindGroup,
+    // createTexture,
     cleanup
   };
 };
