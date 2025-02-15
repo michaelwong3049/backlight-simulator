@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import {
   computeBacklightFrame
-} from '@/utils/colorManipulation';
+} from '@/engines/ConvolutionEngine';
 const videoSrc = require('@/assets/videoplayback.mp4');
 
 interface Props {

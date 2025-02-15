@@ -18,7 +18,7 @@ import {
   findVideoPositionOnCanvas,
   getAverageColor,
   regionConvolution
-} from "@/utils/colorManipulation";
+} from "@/engines/ConvolutionEngine";
 import { EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE, EXPECTED_TEST_CASE_1_AFTER_CONVOLVE } from "@/utils/testingData";
 import { BrowserCompatibleImageData } from "@/utils/BrowserCompatibleImageData";
 global.ImageData = BrowserCompatibleImageData;
