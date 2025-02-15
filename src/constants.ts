@@ -39,6 +39,7 @@ export const GPUShaderStage = Object.freeze({
 } as const);
 export type GPUShaderStage = typeof GPUShaderStage[keyof typeof GPUShaderStage];
 
+
 export const GPUTextureUsage = Object.freeze({
   COPY_SRC: 0x01,
   COPY_DST: 0x02,

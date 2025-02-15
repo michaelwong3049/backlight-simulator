@@ -24,20 +24,30 @@ interface GPURef {
   textures: Map<string, GPUTexture>;
 }
 
+interface UseWebGPUBuffer {
+  size: number;
+  // one of GPUBufferUsage, use bitwise-or for multiple use cases
+  usage: number;
+  data?: Array<any>;
+}
+
+interface UseWebGPUBindGroup {
+  layout?: GPUBindGroupLayout;
+  entries: Array<GPUBindGroupEntry>;
+}
+
 interface UseWebGPUResource {
   name: string;
-  type: 'buffer' | 'texture' | 'bindGroup';
-  size: number;
-  usage: GPUBufferUsage;
-  data?: Array<any>;
+  type: 'buffer' | 'bindGroup';
+  payload: UseWebGPUBuffer | UseWebGPUBindGroup;
 }
 
 interface UseWebGPUParams {
   shaderModule: string;
   pipelineConfig: GPUShaderConfig;
   resources: Array<UseWebGPUResource>;
-  workgroupSize: Array<number>;
-  canvas?: HTMLCanvasElement;
+  workgroupSize?: Array<number>;
+  canvas: HTMLCanvasElement | null;
 }
 
 const useWebGPU = ({
@@ -151,11 +161,11 @@ const useWebGPU = ({
     for (const resource of resources) {
       switch (resource.type) {
         case ResourceType.BUFFER:
-          createBuffer(resource);
+          createBuffer(resource.name, resource.payload as UseWebGPUBuffer);
           break;
-        // case ResourceType.BIND_GROUP:
-        //   createBindGroup(resource);
-        //   break;
+        case ResourceType.BIND_GROUP:
+          createBindGroup(resource.name, resource.payload as UseWebGPUBindGroup);
+          break;
         // case ResourceType.TEXTURE:
         //   createTexture(resource);
         //   break;
@@ -163,7 +173,7 @@ const useWebGPU = ({
     }
   };
 
-  const createBuffer = ({ name, size, usage, data }: UseWebGPUResource) => {
+  const createBuffer = (name: string, { size, data, usage }: UseWebGPUBuffer) => {
     const { device } = gpuRef.current;
     if (!device) return;
     
@@ -187,17 +197,17 @@ const useWebGPU = ({
     return buffer;
   };
 
-  // const createBindGroup = ({ name, layout, entries }) => {
-  //   const { device, pipeline } = gpuRef.current;
-  //   if (!device || !pipeline) return;
+  const createBindGroup = (name: string, { layout, entries }: UseWebGPUBindGroup) => {
+    const { device, pipeline } = gpuRef.current;
+    if (!device || !pipeline) return;
 
-  //   const bindGroup = device.createBindGroup({
-  //     layout: layout || pipeline.getBindGroupLayout(0),
-  //     entries
-  //   });
-  //   gpuRef.current.bindGroups.set(name, bindGroup);
-  //   return bindGroup;
-  // };
+    const bindGroup = device.createBindGroup({
+      layout: layout || pipeline.getBindGroupLayout(0),
+      entries
+    });
+    gpuRef.current.bindGroups.set(name, bindGroup);
+    return bindGroup;
+  };
 
   // const createTexture = ({ name, size, format, usage, data }) => {
   //   const { device } = gpuRef.current;
@@ -227,7 +237,7 @@ const useWebGPU = ({
   //   return texture;
   // };
 
-  const dispatch = async (workgroupCount = [1, 1, 1], bindGroups = []) => {
+  const dispatch = async (workgroupCount = [1, 1, 1], bindGroups: Array<GPUBindGroup> = []) => {
     if (!gpuReady) return;
 
     const { device, pipeline } = gpuRef.current;
@@ -242,7 +252,7 @@ const useWebGPU = ({
       computePass.setBindGroup(index, group);
     });
     
-    computePass.dispatchWorkgroups(1,1,1);
+    computePass.dispatchWorkgroups(workgroupCount[0], workgroupCount[1], workgroupCount[2]);
     computePass.end();
     
     device.queue.submit([commandEncoder.finish()]);
@@ -269,7 +279,7 @@ const useWebGPU = ({
     ...gpuRef.current,
     dispatch,
     createBuffer,
-    // createBindGroup,
+    createBindGroup,
     // createTexture,
     cleanup
   };
