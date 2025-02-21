@@ -1,53 +1,72 @@
 import { useEffect, useRef, useState } from 'react'; 
 import { GPUBufferUsage } from '@/constants';
+import type { GPUShaderConfig, UseWebGPUResource, GPURef, UseWebGPUBuffer, UseWebGPUBindGroup, ShaderSource } from '@/types/webGPU'; 
 
-// Type of resource to create
-const ResourceType = {
-  BUFFER: 'buffer',
-  TEXTURE: 'texture',
-  BIND_GROUP: 'bindGroup'
+const initWebGPU = async () => {
+  if (!navigator.gpu) throw new Error('WebGPU not supported');
+
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('No GPU adapter found');
+
+  const device = await adapter.requestDevice();
+  if (!device) throw new Error('Failed to get GPU device');
+
+  return device;
+}
+
+const initGPUCanvas = (device: GPUDevice, canvas?: HTMLCanvasElement) => {
+  if (!canvas) return null; 
+
+  const context = canvas.getContext('webgpu');
+  const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+  context?.configure({
+    device,
+    format: canvasFormat,
+    alphaMode: 'premultiplied',
+  });
+
+  return context;
+}
+
+const initGPUPipeline = (device: GPUDevice, config: GPUShaderConfig, shader: GPUShaderModule) => {
+  if (config.type === 'compute') {
+    return device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: shader,
+        entryPoint: config.entryPoint || 'main',
+      }
+    });
+  } else if (config.type === 'render') {
+    return device.createRenderPipeline({
+      layout: 'auto',
+      vertex: {
+        module: shader,
+        entryPoint: config.vertexEntryPoint || 'vertexMain',
+      },
+      fragment: {
+        module: shader,
+        entryPoint: config.fragmentEntryPoint || 'fragmentMain',
+        targets: [null],
+      },
+    });
+  }
+}
+
+// Helper function to get the shader code string
+const getShaderCode = (source: ShaderSource): string => {
+  if (typeof source === 'string') {
+    return source;
+  }
+  return source.default;
 };
 
-interface GPUShaderConfig {
-  type: 'render' | 'compute';
-  entryPoint: string;
-  vertexEntryPoint?: string;
-  fragmentEntryPoint?: string;
-}
- 
-interface GPURef {
-  device?: GPUDevice | null;
-  context?: GPUCanvasContext | null;
-  pipeline?: GPUComputePipeline | GPURenderPipeline | null;
-  bindGroups: Map<string, GPUBindGroup>;
-  buffers: Map<string, GPUBuffer>;
-  textures: Map<string, GPUTexture>;
-}
-
-interface UseWebGPUBuffer {
-  size: number;
-  // one of GPUBufferUsage, use bitwise-or for multiple use cases
-  usage: number;
-  data?: Array<any>;
-}
-
-interface UseWebGPUBindGroup {
-  layout?: GPUBindGroupLayout;
-  entries: Array<GPUBindGroupEntry>;
-}
-
-interface UseWebGPUResource {
-  name: string;
-  type: 'buffer' | 'bindGroup';
-  payload: UseWebGPUBuffer | UseWebGPUBindGroup;
-}
-
 interface UseWebGPUParams {
-  shaderModule: string;
+  shaderModule: ShaderSource;
   pipelineConfig: GPUShaderConfig;
   resources: Array<UseWebGPUResource>;
   workgroupSize?: Array<number>;
-  canvas: HTMLCanvasElement | null;
+  canvas?: HTMLCanvasElement | null;
 }
 
 const useWebGPU = ({
@@ -78,73 +97,26 @@ const useWebGPU = ({
   useEffect(() => {
     const initWebGPU = async () => {
       try {
-        if (!navigator.gpu) {
-          throw new Error('WebGPU not supported');
-        }
-
-        const adapter = await navigator.gpu.requestAdapter();
-        if (!adapter) {
-          throw new Error('No GPU adapter found');
-        }
-
-        const device = await adapter.requestDevice();
+        const device = await initGPUDevice();
         gpuRef.current.device = device;
-        if(!device) return;
-
+        
         // Set up context if canvas is provided
-        if (canvas) {
-          const context = canvas.getContext('webgpu');
-          const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-          context?.configure({
-            device,
-            format: canvasFormat,
-            alphaMode: 'premultiplied',
-          });
-          gpuRef.current.context = context;
-        }
+        const gpuCanvasContext = initGPUCanvas(device, canvas ?? undefined);
+        gpuRef.current.context = gpuCanvasContext;
 
         // Create shader module
-        const shader = device.createShaderModule({
-          code: shaderModule
-        });
+        const shader = device.createShaderModule({ code: getShaderCode(shaderModule) });
 
         // Create pipeline based on config type
-        if (pipelineConfig.type === 'compute') {
-          gpuRef.current.pipeline = device.createComputePipeline({
-            layout: 'auto',
-            compute: {
-              module: shader,
-              entryPoint: pipelineConfig.entryPoint || 'main',
-            }
-          });
-        }
-        //  else if (pipelineConfig.type === 'render') {
-        //   gpuRef.current.pipeline = device.createRenderPipeline({
-        //     layout: 'auto',
-        //     vertex: {
-        //       module: shader,
-        //       entryPoint: pipelineConfig.vertexEntryPoint || 'vertexMain',
-        //     },
-        //     fragment: {
-        //       module: shader,
-        //       entryPoint: pipelineConfig.fragmentEntryPoint || 'fragmentMain',
-        //       targets: [{
-        //         format: canvasFormat ?? undefined,
-        //       }],
-        //     },
-        //     primitive: pipelineConfig.primitive || {
-        //       topology: 'triangle-list',
-        //     },
-        //   });
-        // }
+        const pipeline = initGPUPipeline(device, pipelineConfig, shader);
+        gpuRef.current.pipeline = pipeline;
 
         // Initialize resources
         await initializeResources(resources);
 
-        device.addEventListener('uncapturederror', (event) => {
-          setError(event.error);
-        });
+        device.addEventListener('uncapturederror', (event) => setError(event.error));
 
+        console.log('HERE GPU IS READY');
         setGpuReady(true);
       } catch (err) {
         setError(err as GPUError);
@@ -157,13 +129,25 @@ const useWebGPU = ({
     return () => cleanup();
   }, [shaderModule]);
 
+  const initGPUDevice = async () => {
+    if (!navigator.gpu) throw new Error('WebGPU not supported');
+  
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('No GPU adapter found');
+  
+    const device = await adapter.requestDevice();
+    if (!device) throw new Error('Failed to get GPU device');
+  
+    return device;
+  }
+
   const initializeResources = async (resources: Array<UseWebGPUResource>) => {
     for (const resource of resources) {
       switch (resource.type) {
-        case ResourceType.BUFFER:
+        case 'buffer':
           createBuffer(resource.name, resource.payload as UseWebGPUBuffer);
           break;
-        case ResourceType.BIND_GROUP:
+        case 'bindGroup':
           createBindGroup(resource.name, resource.payload as UseWebGPUBindGroup);
           break;
         // case ResourceType.TEXTURE:
@@ -285,4 +269,4 @@ const useWebGPU = ({
   };
 };
 
-export { useWebGPU, ResourceType };
+export { useWebGPU };

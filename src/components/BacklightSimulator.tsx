@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   computeBacklightFrame
 } from '@/engines/ConvolutionEngine';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { GPUBufferUsage } from '@/constants';
+import plus1 from '@/shaders/plus1.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
-const BUFFER_SIZE_IN_BYTES = 268435456;
-const MAX_ELEMENTS = BUFFER_SIZE_IN_BYTES / 4;
+const NUM_ELEMENTS = 5324000;
+const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
 const WORKGROUP_SIZE = 64;
-
-console.log(MAX_ELEMENTS);
 
 interface Props {
   width: number;
@@ -21,6 +20,7 @@ interface Props {
 }
 
 export default function BacklightSimulator(props: Props) {
+  const [data, setData] = useState<ImageData>();
   const { width, height, horizontalDivisions, verticalDivisions } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,53 +30,48 @@ export default function BacklightSimulator(props: Props) {
     buffers,
     dispatch,
     createBuffer,
-    createBindGroup
+    createBindGroup,
   } = useWebGPU({
-    shaderModule: `
-      @group(0) @binding(0) var<storage, read_write> computeBuffer: array<f32>;
-
-      @compute @workgroup_size(${WORKGROUP_SIZE})
-      fn computeMain(@builtin(global_invocation_id) global_id: vec3<u32>) {
-        let idx = global_id.x;
-        if (idx >= arrayLength(&computeBuffer)) {
-          return;
-        }
-        // Your computation here
-        computeBuffer[idx] = 888;
-      }
-    `,
-    pipelineConfig: {
-      type: 'compute',
-      entryPoint: 'computeMain'
-    },
+    shaderModule: plus1,
+    pipelineConfig: { type: 'compute', entryPoint: 'computeMain' },
     resources: [
       {
         type: 'buffer',
         name: 'computeBuffer',
         payload: {
           size: BUFFER_SIZE_IN_BYTES,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         }
       },
-    ],
-    canvas: canvasRef.current
+      {
+        type: 'buffer',
+        name: 'stageOutBuffer',
+        payload: {
+          size: BUFFER_SIZE_IN_BYTES,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+        }
+      }
+    ]
   });
 
-  const sendGpuData = async () => {
-    if(!gpuReady || !device) return;
+  const sendGpuData = async (frameData: Uint8ClampedArray) => {
+    const computeBuffer = buffers.get('computeBuffer');
+    const stageOutBuffer = buffers.get('stageOutBuffer');
+    
+    if(!gpuReady || !device || !computeBuffer || !stageOutBuffer) return;
 
     const bindGroup = createBindGroup('mainBindGroup',
       {
         entries: [
-          { binding: 0, resource: { buffer: buffers.get('computeBuffer')! } },
+          { binding: 0, resource: { buffer: computeBuffer } },
         ]
       }
     )!;
 
-    const stagingBuffer = device.createBuffer({
-      size: BUFFER_SIZE_IN_BYTES, // Match your render buffer size
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    });
+    // creating a buffer to constantly feed data     
+    console.log('THIS IS HTE FRAME DATA', frameData);
+    device.queue.writeBuffer(computeBuffer, 0, frameData, frameData.byteOffset, frameData.byteLength)
+    await device.queue.onSubmittedWorkDone();
 
     // Calculate workgroup count based on buffer size and workgroup size
     const workgroupSize = 64; // Match shader @workgroup_size
@@ -89,21 +84,19 @@ export default function BacklightSimulator(props: Props) {
       // 2. Copy results to staging buffer
       const commandEncoder = device.createCommandEncoder();
       commandEncoder.copyBufferToBuffer(
-        buffers.get('computeBuffer')!,
+        computeBuffer,
         0,
-        stagingBuffer,
+        stageOutBuffer,
         0,
         BUFFER_SIZE_IN_BYTES
       );
       device.queue.submit([commandEncoder.finish()]);
 
       // 3. Read staging buffer and update canvas
-      await stagingBuffer.mapAsync(GPUMapMode.READ);
-      const results = new Float32Array(stagingBuffer.getMappedRange());
-      const resultsCopy = results.slice();
-      stagingBuffer.unmap();
-
-      return resultsCopy;
+      await stageOutBuffer.mapAsync(GPUMapMode.READ);
+      const data = stageOutBuffer.getMappedRange().slice(0);
+      stageOutBuffer.unmap();
+      return new Uint32Array(data);
     }
 
     console.log('starting GPU code');
@@ -113,6 +106,7 @@ export default function BacklightSimulator(props: Props) {
     console.log('finished GPU code');
     console.log(data);
     console.log(`it took ${tock - tick}ms`)
+    return data;
   }
 
   const handleFrame = useCallback(
@@ -141,6 +135,10 @@ export default function BacklightSimulator(props: Props) {
       );
 
       const frame = ctx.getImageData(0, 0, width, height);
+      setData(frame);
+
+      sendGpuData(frame.data).then((val) => console.log(val));
+      
       const backlightFrame = computeBacklightFrame(
         ctx,
         frame,
@@ -156,14 +154,14 @@ export default function BacklightSimulator(props: Props) {
         handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
       );
     },
-    [height, width]
+    [height, width, gpuReady]
   );
 
   useEffect(
     function setup() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas) return;
+      if (!video || !canvas || !gpuReady) return;
 
       // NOTE: we can disable alpha channel here which should save comp time
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -193,9 +191,12 @@ export default function BacklightSimulator(props: Props) {
         window.removeEventListener('resize', handleResize);
       };
     },
-    [handleFrame, height, width, horizontalDivisions, verticalDivisions]
+    [handleFrame, height, width, horizontalDivisions, verticalDivisions, gpuReady]
   );
 
+  // NB: if the GPU isn't ready, literally don't start
+  if (!gpuReady) return <p>...</p>;
+  
   // TODO: we can move these styles into css later
   return (
     <div
@@ -207,7 +208,7 @@ export default function BacklightSimulator(props: Props) {
     >
       <canvas ref={canvasRef} width={width} height={height}></canvas>
       <video ref={videoRef} id='video' src={videoSrc} muted loop controls />
-      <button onClick={sendGpuData}>send gpu data</button>
+      {/* <button onClick={() => sendGpuData()}>send gpu data</button> */}
     </div>
   );
 }
