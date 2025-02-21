@@ -69,7 +69,6 @@ export default function BacklightSimulator(props: Props) {
     )!;
 
     // creating a buffer to constantly feed data     
-    console.log('THIS IS HTE FRAME DATA', frameData);
     device.queue.writeBuffer(computeBuffer, 0, frameData, frameData.byteOffset, frameData.byteLength)
     await device.queue.onSubmittedWorkDone();
 
@@ -99,13 +98,10 @@ export default function BacklightSimulator(props: Props) {
       return new Uint32Array(data);
     }
 
-    console.log('starting GPU code');
     const tick = Date.now();
     const data = await render();
     const tock = Date.now();
-    console.log('finished GPU code');
-    console.log(data);
-    console.log(`it took ${tock - tick}ms`)
+    console.log(`GPU shader took ${tock - tick}ms`)
     return data;
   }
 
@@ -117,7 +113,12 @@ export default function BacklightSimulator(props: Props) {
       horizontalDivisions: number,
       verticalDivisions: number
     ) => {
-      if (video.paused) return;
+      if (video.paused) {
+        console.log('video is paused');
+        return
+      };
+
+      // console.log('START HANDLE FRAME');
 
       ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
@@ -137,22 +138,30 @@ export default function BacklightSimulator(props: Props) {
       const frame = ctx.getImageData(0, 0, width, height);
       setData(frame);
 
-      sendGpuData(frame.data).then((val) => console.log(val));
-      
-      const backlightFrame = computeBacklightFrame(
-        ctx,
-        frame,
-        { width: video.offsetWidth, height: video.offsetHeight },
-        {
-          horizontalDivisions,
-          verticalDivisions,
+      sendGpuData(frame.data).then((backlightFrame) => {
+        // console.log('END HANDLE FRAME');
+        if (video.paused) {
+          console.log('not calling next frame, its paused');
+          return;
         }
-      );
-      ctx.putImageData(backlightFrame, 0, 0);
 
-      video.requestVideoFrameCallback(() =>
-        handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
-      );
+        console.log('calling next frame')
+        video.requestVideoFrameCallback(() =>
+          handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
+        );
+      }); ///.then((val) => console.log(val));
+      
+      // const backlightFrame = computeBacklightFrame(
+      //   ctx,
+      //   frame,
+      //   { width: video.offsetWidth, height: video.offsetHeight },
+      //   {
+      //     horizontalDivisions,
+      //     verticalDivisions,
+      //   }
+      // );
+      // ctx.putImageData(backlightFrame, 0, 0);
+      
     },
     [height, width, gpuReady]
   );
@@ -167,6 +176,7 @@ export default function BacklightSimulator(props: Props) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
 
+      console.log('RAN USE EFFECT');
       const startFrameProcessing = () =>
         video.requestVideoFrameCallback(() =>
           handleFrame(
@@ -179,6 +189,9 @@ export default function BacklightSimulator(props: Props) {
         );
       video.addEventListener('play', startFrameProcessing);
 
+      const handlePause = () => console.log('---- PAUSED THE VIDEO ----');
+      video.addEventListener('pause', handlePause)
+
       const handleResize = () => {
         canvas.width = width;
         canvas.height = height;
@@ -188,6 +201,7 @@ export default function BacklightSimulator(props: Props) {
 
       return () => {
         video.removeEventListener('play', startFrameProcessing);
+        video.removeEventListener('pause', handlePause)
         window.removeEventListener('resize', handleResize);
       };
     },
