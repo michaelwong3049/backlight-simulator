@@ -20,7 +20,6 @@ interface Props {
 }
 
 export default function BacklightSimulator(props: Props) {
-  const [data, setData] = useState<ImageData>();
   const { width, height, horizontalDivisions, verticalDivisions } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -136,7 +135,6 @@ export default function BacklightSimulator(props: Props) {
       );
 
       const frame = ctx.getImageData(0, 0, width, height);
-      setData(frame);
 
       sendGpuData(frame.data).then((backlightFrame) => {
         // console.log('END HANDLE FRAME');
