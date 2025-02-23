@@ -1,15 +1,13 @@
 import { ShaderSource } from '@/types/webGPU';
 
-interface GPUEngineBuffer {
+export interface GPUEngineBuffer {
   name: string;
   sizeInBytes: number;
   usage: number; // one of GPUBufferUsage, use bitwise-or for multiple use cases
   data?: Array<number>;
-  // TODO: should eventually be something, assuming a single group for now
-  bindGroupIdx?: number;
 }
 
-interface GPUEngineShaderDetails {
+export interface GPUEngineShaderDetails {
   source: ShaderSource;
   type: 'render' | 'compute';
   computeEntryPoint?: string;
@@ -30,6 +28,7 @@ export default class GPUEngine {
   private buffers = new Map<string, GPUBuffer>(); 
 
   private isProcessingOperation = false;
+  isReady = false;
 
   constructor(shader: GPUEngineShaderDetails, canvas?: HTMLCanvasElement) {
     this.shaderDetails = shader;
@@ -50,7 +49,8 @@ export default class GPUEngine {
 
     this.context = this.initCanvas(this.device, this.canvas);
     this.buffers = this.initBuffers(this.device, buffers);
-    this.bindGroups = this.initBindGroups(this.device, bindGroups)
+    this.bindGroups = this.initBindGroups(this.device, bindGroups);
+    this.isReady = true;
   }
 
   cleanup() {
@@ -81,7 +81,7 @@ export default class GPUEngine {
   }
   
   // maybe overspecified for numbers?
-  async writeBuffer(name: string, data: ArrayBuffer) {
+  async writeBuffer(name: string, data: BufferSource | SharedArrayBuffer) {
     const device = this.validateDevice(this.device);
     
     const buffer = this.buffers.get(name);
@@ -93,7 +93,7 @@ export default class GPUEngine {
     this.isProcessingOperation = false;
   }
   
-  async readBuffer(name: string): Promise<ArrayBuffer | string> {
+  async readBuffer(name: string): Promise<ArrayBuffer> {
     this.validateDevice(this.device);
     
     const staging = this.buffers.get('$staging')!;
@@ -108,7 +108,7 @@ export default class GPUEngine {
       this.isProcessingOperation = false;
       return Promise.resolve(data)
     } catch (err) {
-      return Promise.resolve(`${err}`);
+      return Promise.reject(`${err}`);
     } finally {
       this.isProcessingOperation = false;
     }
