@@ -1,9 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import {
-  computeBacklightFrame
-} from '@/engines/ConvolutionEngine';
-import { useWebGPU } from '@/hooks/useWebGPU';
 import { GPUBufferUsage } from '@/constants';
+import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
 import plus1 from '@/shaders/plus1.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
@@ -11,6 +8,14 @@ const videoSrc = require('@/assets/videoplayback.mp4');
 const NUM_ELEMENTS = 5324000;
 const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
 const WORKGROUP_SIZE = 64;
+
+const GPU_BUFFERS: Array<GPUEngineBuffer> = [
+  {
+    name: 'computeBuffer',
+    sizeInBytes: BUFFER_SIZE_IN_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+  }
+]
 
 interface Props {
   width: number;
@@ -20,105 +25,26 @@ interface Props {
 }
 
 export default function BacklightSimulator(props: Props) {
-  const [data, setData] = useState<ImageData>();
   const { width, height, horizontalDivisions, verticalDivisions } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const {
-    gpuReady,
-    device,
-    buffers,
-    dispatch,
-    createBuffer,
-    createBindGroup,
-  } = useWebGPU({
-    shaderModule: plus1,
-    pipelineConfig: { type: 'compute', entryPoint: 'computeMain' },
-    resources: [
-      {
-        type: 'buffer',
-        name: 'computeBuffer',
-        payload: {
-          size: BUFFER_SIZE_IN_BYTES,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        }
-      },
-      {
-        type: 'buffer',
-        name: 'stageOutBuffer',
-        payload: {
-          size: BUFFER_SIZE_IN_BYTES,
-          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-        }
-      }
-    ]
-  });
-
-  const sendGpuData = async (frameData: Uint8ClampedArray) => {
-    const computeBuffer = buffers.get('computeBuffer');
-    const stageOutBuffer = buffers.get('stageOutBuffer');
-    
-    if(!gpuReady || !device || !computeBuffer || !stageOutBuffer) return;
-
-    const bindGroup = createBindGroup('mainBindGroup',
-      {
-        entries: [
-          { binding: 0, resource: { buffer: computeBuffer } },
-        ]
-      }
-    )!;
-
-    // creating a buffer to constantly feed data     
-    device.queue.writeBuffer(computeBuffer, 0, frameData, frameData.byteOffset, frameData.byteLength)
-    await device.queue.onSubmittedWorkDone();
-
-    // Calculate workgroup count based on buffer size and workgroup size
-    const workgroupSize = 64; // Match shader @workgroup_size
-    const workgroupCount = Math.ceil(BUFFER_SIZE_IN_BYTES / (4 * workgroupSize)); // 4 bytes per float
-
-    const render = async () => {
-      // 1. Run compute shader
-      await dispatch([workgroupCount, 1, 1], [bindGroup]); // Adjust workgroup count as needed
-
-      // 2. Copy results to staging buffer
-      const commandEncoder = device.createCommandEncoder();
-      commandEncoder.copyBufferToBuffer(
-        computeBuffer,
-        0,
-        stageOutBuffer,
-        0,
-        BUFFER_SIZE_IN_BYTES
-      );
-      device.queue.submit([commandEncoder.finish()]);
-
-      // 3. Read staging buffer and update canvas
-      await stageOutBuffer.mapAsync(GPUMapMode.READ);
-      const data = stageOutBuffer.getMappedRange().slice(0);
-      stageOutBuffer.unmap();
-      return new Uint32Array(data);
-    }
-
-    const tick = Date.now();
-    const data = await render();
-    const tock = Date.now();
-    console.log(`GPU shader took ${tock - tick}ms`)
-    return data;
-  }
+  const engineRef = useRef<GPUEngine>();
+  const [isGPUReady, setIsGPUReady] = useState(false);
 
   const handleFrame = useCallback(
-    (
+    async (
       video: HTMLVideoElement,
       canvas: HTMLCanvasElement,
       ctx: CanvasRenderingContext2D,
       horizontalDivisions: number,
       verticalDivisions: number
     ) => {
-      if (video.paused) {
-        console.log('video is paused');
-        return
-      };
-
-      // console.log('START HANDLE FRAME');
+      const engine = engineRef.current;
+      if (video.paused || !engine) return;
+      if (engine.isProcessing()) {
+        console.log('dropping frame since GPU is falling behind');
+        return;
+      }
 
       ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
@@ -136,47 +62,60 @@ export default function BacklightSimulator(props: Props) {
       );
 
       const frame = ctx.getImageData(0, 0, width, height);
-      setData(frame);
+      try {
+        const tick = Date.now();
+        await engine.writeBuffer('computeBuffer', frame.data);
+        await engine.execute([64, 1, 1]);
+        const data = await engine.readBuffer('computeBuffer');
+        const tock = Date.now();
+        console.log(`GPU operations took ${tock - tick}ms`);
 
-      sendGpuData(frame.data).then((backlightFrame) => {
-        // console.log('END HANDLE FRAME');
-        if (video.paused) {
-          console.log('not calling next frame, its paused');
-          return;
-        }
-
-        console.log('calling next frame')
+        // frame.data.set(new Uint8Array(data));
+        ctx.putImageData(frame, 0, 0);
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
-      }); ///.then((val) => console.log(val));
-      
-      // const backlightFrame = computeBacklightFrame(
-      //   ctx,
-      //   frame,
-      //   { width: video.offsetWidth, height: video.offsetHeight },
-      //   {
-      //     horizontalDivisions,
-      //     verticalDivisions,
-      //   }
-      // );
-      // ctx.putImageData(backlightFrame, 0, 0);
-      
+      } catch (err) {
+        console.error('GPU Error: ', err);
+      }
     },
-    [height, width, gpuReady]
+    [height, width]
   );
+
+  useEffect(() => {
+    const initGPU = async () => {
+      try {
+        const engine = new GPUEngine(
+          { source: plus1, type: 'compute', computeEntryPoint: 'computeMain' }
+        );
+
+        await engine.initialize(GPU_BUFFERS, [['computeBuffer']]);
+        engineRef.current = engine;
+        setIsGPUReady(true);
+      } catch (err) {
+        console.error('BIG ERROR', err);
+        setIsGPUReady(false);
+      }
+    };
+
+    initGPU();
+
+    // Cleanup function
+    return () => {
+      if (engineRef.current) engineRef.current.cleanup()
+    };
+  }, []);
 
   useEffect(
     function setup() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas || !gpuReady) return;
-
+      if (!video || !canvas || !isGPUReady) return;
+      
       // NOTE: we can disable alpha channel here which should save comp time
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
-
-      console.log('RAN USE EFFECT');
+      
       const startFrameProcessing = () =>
         video.requestVideoFrameCallback(() =>
           handleFrame(
@@ -188,10 +127,7 @@ export default function BacklightSimulator(props: Props) {
           )
         );
       video.addEventListener('play', startFrameProcessing);
-
-      const handlePause = () => console.log('---- PAUSED THE VIDEO ----');
-      video.addEventListener('pause', handlePause)
-
+      
       const handleResize = () => {
         canvas.width = width;
         canvas.height = height;
@@ -201,15 +137,14 @@ export default function BacklightSimulator(props: Props) {
 
       return () => {
         video.removeEventListener('play', startFrameProcessing);
-        video.removeEventListener('pause', handlePause)
         window.removeEventListener('resize', handleResize);
       };
     },
-    [handleFrame, height, width, horizontalDivisions, verticalDivisions, gpuReady]
+    [handleFrame, height, width, horizontalDivisions, verticalDivisions, isGPUReady]
   );
 
   // NB: if the GPU isn't ready, literally don't start
-  if (!gpuReady) return <p>...</p>;
+  if (!isGPUReady) return <p>Initializing GPU...</p>;
   
   // TODO: we can move these styles into css later
   return (
