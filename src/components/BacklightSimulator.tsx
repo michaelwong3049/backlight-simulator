@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
 import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
-import plus1 from '@/shaders/plus1.wgsl';
+import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
@@ -13,6 +13,12 @@ const GPU_BUFFERS: Array<GPUEngineBuffer> = [
   {
     name: 'computeBuffer',
     sizeInBytes: BUFFER_SIZE_IN_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+  },
+  {
+    name: 'paramBuffer',
+    // TODO(michaelwong): fix to match the size in bytes of params
+    sizeInBytes: 24, 
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
   }
 ]
@@ -64,14 +70,25 @@ export default function BacklightSimulator(props: Props) {
       const frame = ctx.getImageData(0, 0, width, height);
       try {
         const tick = Date.now();
+
         await engine.writeBuffer('computeBuffer', frame.data);
+
+        const shaderTick = Date.now();
         await engine.execute([64, 1, 1]);
+        const shaderTock = Date.now();
+        console.log(`Spent ${shaderTock - shaderTick}ms on the GPU shader`)
+
         const data = await engine.readBuffer('computeBuffer');
+        const params = await engine.readBuffer("paramBuffer");
+        const divisionBuffer = await engine.readBuffer('divisionBuffer');
+
         const tock = Date.now();
         console.log(`GPU operations took ${tock - tick}ms`);
 
+        const divisionData = new Uint32Array(divisionBuffer);
+        
         // frame.data.set(new Uint8Array(data));
-        ctx.putImageData(frame, 0, 0);
+        // ctx.putImageData(frame, 0, 0);
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
@@ -86,10 +103,10 @@ export default function BacklightSimulator(props: Props) {
     const initGPU = async () => {
       try {
         const engine = new GPUEngine(
-          { source: plus1, type: 'compute', computeEntryPoint: 'computeMain' }
+          { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
         );
 
-        await engine.initialize(GPU_BUFFERS, [['computeBuffer']]);
+        await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
         engineRef.current = engine;
         setIsGPUReady(true);
       } catch (err) {
@@ -110,13 +127,33 @@ export default function BacklightSimulator(props: Props) {
     function setup() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas || !isGPUReady) return;
+      const engine = engineRef.current;
+      if (!video || !canvas || !isGPUReady || !engine) return;
       
       // NOTE: we can disable alpha channel here which should save comp time
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
       
-      const startFrameProcessing = () =>
+      const startFrameProcessing = async () => {
+        const params = new Uint32Array([
+          horizontalDivisions,
+          verticalDivisions,
+          video.offsetHeight,
+          video.offsetWidth,
+          canvas.width,
+          canvas.height
+        ]);
+        await engine.writeBuffer('paramBuffer', params);
+
+        engine.createBuffer({
+          name: 'divisionBuffer',
+          // each division has 5 numbers, each 4 bytes
+          // we have horiztonal * vertical divisions.
+          sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
+          // maybe this usage is too much
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        }, 0);
+
         video.requestVideoFrameCallback(() =>
           handleFrame(
             video,
@@ -126,6 +163,7 @@ export default function BacklightSimulator(props: Props) {
             verticalDivisions
           )
         );
+      };
       video.addEventListener('play', startFrameProcessing);
       
       const handleResize = () => {
@@ -138,6 +176,7 @@ export default function BacklightSimulator(props: Props) {
       return () => {
         video.removeEventListener('play', startFrameProcessing);
         window.removeEventListener('resize', handleResize);
+        engine.cleanup();
       };
     },
     [handleFrame, height, width, horizontalDivisions, verticalDivisions, isGPUReady]

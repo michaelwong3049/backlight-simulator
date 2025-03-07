@@ -1,4 +1,5 @@
 import { ShaderSource } from '@/types/webGPU';
+import { kMaxLength } from 'buffer';
 
 export interface GPUEngineBuffer {
   name: string;
@@ -18,17 +19,18 @@ export interface GPUEngineShaderDetails {
 export default class GPUEngine {
   readonly shaderDetails: GPUEngineShaderDetails;
   readonly shaderType: 'compute' | 'render';
-  
+
   device?: GPUDevice;
   pipeline?: GPUComputePipeline | GPURenderPipeline | null;
   canvas?: HTMLCanvasElement;
   context?: GPUCanvasContext | null;
 
+  private currentBindGroupState: Array<Array<string>> = [];
+  private desiredBindGroupState: Array<Array<string>> = [];
   private bindGroups: Array<GPUBindGroup> = []; 
   private buffers = new Map<string, GPUBuffer>(); 
 
   private isProcessingOperation = false;
-  isReady = false;
 
   constructor(shader: GPUEngineShaderDetails, canvas?: HTMLCanvasElement) {
     this.shaderDetails = shader;
@@ -49,8 +51,8 @@ export default class GPUEngine {
 
     this.context = this.initCanvas(this.device, this.canvas);
     this.buffers = this.initBuffers(this.device, buffers);
-    this.bindGroups = this.initBindGroups(this.device, bindGroups);
-    this.isReady = true;
+
+    this.desiredBindGroupState = bindGroups;
   }
 
   cleanup() {
@@ -62,6 +64,11 @@ export default class GPUEngine {
   async execute(workgroupCount: [number, number, number]) {
     if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
     const device = this.validateDevice(this.device);
+
+    if (!this.areBindGroupsEqual(this.currentBindGroupState, this.desiredBindGroupState)) {
+      this.bindGroups = this.initBindGroups(device, this.desiredBindGroupState);
+      this.currentBindGroupState = this.desiredBindGroupState;
+    }
 
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
@@ -94,14 +101,30 @@ export default class GPUEngine {
   }
   
   async readBuffer(name: string): Promise<ArrayBuffer> {
-    this.validateDevice(this.device);
+    const device = this.validateDevice(this.device);
     
-    const staging = this.buffers.get('$staging')!;
     const buffer = this.buffers.get(name);
     if (!buffer) throw new Error(`Could not find a buffer named ${name}`)
+
+    const staging = device.createBuffer({
+      size: buffer.size,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+    });
+      
+    const commandEncoder = device.createCommandEncoder();
+    commandEncoder.copyBufferToBuffer(
+      buffer,
+      0,
+      staging,
+      0,
+      buffer.size
+    );
       
     try {
       this.isProcessingOperation = true;
+      device.queue.submit([commandEncoder.finish()]);
+      await device.queue.onSubmittedWorkDone();
+
       await staging.mapAsync(GPUMapMode.READ);
       const data = staging.getMappedRange().slice(0);
       staging.unmap();
@@ -171,7 +194,6 @@ export default class GPUEngine {
 
   private initBuffers(device: GPUDevice, bufferDescriptions: Array<GPUEngineBuffer>) {
     const buffers = new Map<string, GPUBuffer>();
-    let maxBufferSizeInBytes = 0;
 
     bufferDescriptions.forEach((desc) => {
       const { name, sizeInBytes: size, usage, data } = desc;
@@ -193,33 +215,45 @@ export default class GPUEngine {
       }
 
       buffers.set(name, buffer);
-
-      if (size > maxBufferSizeInBytes) maxBufferSizeInBytes = size;
-    }); 
-
-    // set special internal staging buffer
-    const staging = device.createBuffer({
-      size: maxBufferSizeInBytes,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    })
-    buffers.set('$staging', staging);
+    });
 
     return buffers;
+  }
+
+  createBuffer(bufferDescription: GPUEngineBuffer, bindGroupIdx: number) {
+    const device = this.validateDevice(this.device);
+    const { name, sizeInBytes: size, usage, data } = bufferDescription;
+
+    if (this.buffers.has(name)) {
+      throw new Error(`Failed to create buffer, buffer named "${name}" exists already`);
+    }
+
+    const buffer = device.createBuffer({
+      size,
+      usage,
+    });
+    this.buffers.set(name, buffer);
+
+    if (this.currentBindGroupState.length !== 0) {
+      this.desiredBindGroupState = this.currentBindGroupState;
+    }
+
+    this.desiredBindGroupState[bindGroupIdx].push(name);
   }
 
   private initBindGroups(device: GPUDevice, bindGroupDescriptions: Array<Array<string>>) {
     const bindGroups: Array<GPUBindGroup> = [];
 
-    bindGroupDescriptions.forEach((desc, idx) => {
+    bindGroupDescriptions.forEach((desc) => {
       const bg = device.createBindGroup({
         // does this index need to change?
         layout: this.pipeline!.getBindGroupLayout(0),
-        entries: desc.map((bufferName) => {
+        entries: desc.map((bufferName, nestedIdx) => {
           const buffer = this.buffers.get(bufferName);
           if (!buffer)
             throw new Error(`Failed to create bind groups: could not find a buffer named ${bufferName}`)
 
-          return { binding: idx, resource: { buffer }};
+          return { binding: nestedIdx, resource: { buffer }};
         })
       });
 
@@ -243,5 +277,27 @@ export default class GPUEngine {
     }
 
     return device;
+  }
+
+  private areBindGroupsEqual(current: Array<Array<string>>, prev: Array<Array<string>>) {
+    const currentBindGroupState = current;
+    const desiredBindGroupState = prev;
+    // return true if current is out of sync with desired
+    if(currentBindGroupState.length !== desiredBindGroupState.length) return false;
+    
+    for(let bindGroup = 0; bindGroup < currentBindGroupState.length; bindGroup++) {
+      let currCurrentBindGroup = currentBindGroupState[bindGroup];
+      let currDesiredBindGroup = desiredBindGroupState[bindGroup];
+      if(currCurrentBindGroup.length !== currDesiredBindGroup.length) return false;
+
+      for(let buffer = 0; buffer < currDesiredBindGroup.length; buffer++) {
+        // funny naming?
+        if(currCurrentBindGroup[buffer] != currDesiredBindGroup[buffer]) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 }
