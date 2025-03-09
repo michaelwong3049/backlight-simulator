@@ -1,27 +1,71 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
 import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
-import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
+import type { Dimensions } from '@/types';
+import computeDivisions from '@/shaders/computeDivisions.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
-const NUM_ELEMENTS = 5324000;
-const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
-const WORKGROUP_SIZE = 64;
+const buildGPUResourceDescriptions = (
+  horizontalDivisions: number,
+  verticalDivisions: number,
+  videoDimensions: Dimensions,
+  canvasDimensions: Dimensions,
+): { buffers: Array<GPUEngineBuffer>, bindGroups: Array<Array<string>> } => {
+  const frameDataBufferSize = canvasDimensions.width * canvasDimensions.height * 4;
 
-const GPU_BUFFERS: Array<GPUEngineBuffer> = [
-  {
-    name: 'computeBuffer',
-    sizeInBytes: BUFFER_SIZE_IN_BYTES,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-  },
-  {
-    name: 'paramBuffer',
-    // TODO(michaelwong): fix to match the size in bytes of params
-    sizeInBytes: 24, 
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-  }
-]
+  return {
+    buffers: [
+      {
+        name: 'parameters',
+        sizeInBytes: 6 * 4, // 6 f32 numbers @ 4 bytes each
+        usage: GPUBufferUsage.UNIFORM,
+        data: new Float32Array([
+          horizontalDivisions,
+          verticalDivisions,
+          videoDimensions.width,
+          videoDimensions.height,
+          canvasDimensions.width,
+          canvasDimensions.height,
+        ])
+      },
+      {
+        name: 'divisions',
+        // each division has 5 numbers, each 4 bytes
+        // we have horiztonal * vertical divisions.
+        sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
+        usage: GPUBufferUsage.STORAGE
+      },
+      {
+        name: 'inputFrameData',
+        sizeInBytes: frameDataBufferSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+      },
+      {
+        name: 'outputFrameData',
+        sizeInBytes: frameDataBufferSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+      },
+      {
+        name: 'upload',
+        sizeInBytes: frameDataBufferSize,
+        usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC
+      },
+      {
+        name: 'download',
+        sizeInBytes: frameDataBufferSize,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+      }
+    ],
+    bindGroups: [
+      ['parameters'],
+      // computeDivisions.wgsl
+      ['inputFrameData', 'divisions'],
+      // regionConvolution.wgsl
+      ['divisions', 'inputFrameData', 'outputFrameData']
+    ]
+  };
+}
 
 interface Props {
   width: number;
@@ -34,7 +78,7 @@ export default function BacklightSimulator(props: Props) {
   const { width, height, horizontalDivisions, verticalDivisions } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<GPUEngine>();
+  const engineRef = useRef<GPUEngine>(new GPUEngine({ source: computeDivisions, type: 'compute', computeEntryPoint: 'main' }));
   const [isGPUReady, setIsGPUReady] = useState(false);
 
   const handleFrame = useCallback(
@@ -51,6 +95,7 @@ export default function BacklightSimulator(props: Props) {
         console.log('dropping frame since GPU is falling behind');
         return;
       }
+
 
       ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
@@ -70,25 +115,14 @@ export default function BacklightSimulator(props: Props) {
       const frame = ctx.getImageData(0, 0, width, height);
       try {
         const tick = Date.now();
-
-        await engine.writeBuffer('computeBuffer', frame.data);
-
-        const shaderTick = Date.now();
-        await engine.execute([64, 1, 1]);
-        const shaderTock = Date.now();
-        console.log(`Spent ${shaderTock - shaderTick}ms on the GPU shader`)
-
-        const data = await engine.readBuffer('computeBuffer');
-        const params = await engine.readBuffer("paramBuffer");
-        const divisionBuffer = await engine.readBuffer('divisionBuffer');
-
+        console.log(engine.hasBuffer('inputFrameData'));
+        // await engine.writeBuffer('inputFrameData', frame.data);
+        // one workgroup per division
+        await engine.execute([horizontalDivisions, verticalDivisions, 1]);
         const tock = Date.now();
+
         console.log(`GPU operations took ${tock - tick}ms`);
 
-        const divisionData = new Uint32Array(divisionBuffer);
-        
-        // frame.data.set(new Uint8Array(data));
-        // ctx.putImageData(frame, 0, 0);
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
@@ -98,30 +132,6 @@ export default function BacklightSimulator(props: Props) {
     },
     [height, width]
   );
-
-  useEffect(() => {
-    const initGPU = async () => {
-      try {
-        const engine = new GPUEngine(
-          { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
-        );
-
-        await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
-        engineRef.current = engine;
-        setIsGPUReady(true);
-      } catch (err) {
-        console.error('BIG ERROR', err);
-        setIsGPUReady(false);
-      }
-    };
-
-    initGPU();
-
-    // Cleanup function
-    return () => {
-      if (engineRef.current) engineRef.current.cleanup()
-    };
-  }, []);
 
   useEffect(
     function setup() {
@@ -134,26 +144,7 @@ export default function BacklightSimulator(props: Props) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
       
-      const startFrameProcessing = async () => {
-        const params = new Uint32Array([
-          horizontalDivisions,
-          verticalDivisions,
-          video.offsetHeight,
-          video.offsetWidth,
-          canvas.width,
-          canvas.height
-        ]);
-        await engine.writeBuffer('paramBuffer', params);
-
-        engine.createBuffer({
-          name: 'divisionBuffer',
-          // each division has 5 numbers, each 4 bytes
-          // we have horiztonal * vertical divisions.
-          sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
-          // maybe this usage is too much
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        }, 0);
-
+      const startFrameProcessing = () => {
         video.requestVideoFrameCallback(() =>
           handleFrame(
             video,
@@ -169,6 +160,7 @@ export default function BacklightSimulator(props: Props) {
       const handleResize = () => {
         canvas.width = width;
         canvas.height = height;
+        engine.cleanup();
       };
       window.addEventListener('resize', handleResize);
       handleResize();
@@ -182,8 +174,47 @@ export default function BacklightSimulator(props: Props) {
     [handleFrame, height, width, horizontalDivisions, verticalDivisions, isGPUReady]
   );
 
-  // NB: if the GPU isn't ready, literally don't start
-  if (!isGPUReady) return <p>Initializing GPU...</p>;
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      console.log('vc not ready');
+      return;
+    }
+
+    const engine = engineRef.current;
+    if (!engine) {
+      console.error('GPUEngine is not defined');
+      return;
+    }
+
+    const initGPU = async () => {
+      try {
+        const videoDimensions: Dimensions = { width: video.offsetWidth, height: video.offsetHeight };
+        const canvasDimensions: Dimensions = { width: canvas.width, height: canvas.height };
+        const { buffers, bindGroups } = buildGPUResourceDescriptions(
+          horizontalDivisions,
+          verticalDivisions,
+          videoDimensions,
+          canvasDimensions
+        );
+
+        await engine.initialize(buffers, bindGroups);
+        engineRef.current = engine;
+        setIsGPUReady(true);
+      } catch (err) {
+        console.error('BIG ERROR', err);
+        setIsGPUReady(false);
+      }
+    };
+
+    initGPU();
+
+    // Cleanup function
+    return () => {
+      if (engineRef.current) engineRef.current.cleanup()
+    };
+  }, [horizontalDivisions, verticalDivisions]);
   
   // TODO: we can move these styles into css later
   return (

@@ -1,10 +1,10 @@
 struct Params { 
-  horizontalDivisions: u32,
-  verticalDivisions: u32,
-  videoHeight: u32,
-  videoWidth: u32,
-  canvasWidth: u32,
-  canvasHeight: u32,
+  horizontalDivisions: f32,
+  verticalDivisions: f32,
+  videoWidth: f32,
+  videoHeight: f32,
+  canvasWidth: f32,
+  canvasHeight: f32,
 }
 
 struct Dimensions {
@@ -38,7 +38,7 @@ struct Position {
 // [division1 row, division1 col, division width, division1 height, division1 color, division2 row, division2 col, ...]
 @group(0) @binding(2) var<storage, read_write> divisionBuffer: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(1)
 fn computeMain(@builtin(global_invocation_id) global_id: vec3<u32>) {
   let idx = global_id.x;
   if (idx >= arrayLength(&computeBuffer)) {

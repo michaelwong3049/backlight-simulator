@@ -23,5 +23,8 @@ export interface Division {
   color: Uint8ClampedArray;
 }
 
-// rgba order
-export type PixelData = [number, number, number, number];
+export interface GPUBatchSize {
+  x: number;
+  y: number;
+  z: number;
+}
