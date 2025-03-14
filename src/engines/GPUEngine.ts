@@ -27,7 +27,8 @@ export default class GPUEngine {
   private currentBindGroupState: Array<Array<string>> = [];
   private desiredBindGroupState: Array<Array<string>> = [];
   private bindGroups: Array<GPUBindGroup> = []; 
-  private buffers = new Map<string, GPUBuffer>(); 
+  buffers = new Map<string, GPUBuffer>(); 
+  private bindGroupLayout?: GPUBindGroupLayout;
 
   private isProcessingOperation = false;
 
@@ -44,14 +45,47 @@ export default class GPUEngine {
   // bindGroups is array of buffer names created, top level arr is bind group idx
   async initialize(buffers: Array<GPUEngineBuffer>, bindGroups: Array<Array<string>>) {
     this.device = await this.initGPUDevice();
+    
+    this.context = this.initCanvas(this.device, this.canvas);
+    
+    this.bindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: {
+            type: 'uniform' as const,
+          }
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: {
+            type: 'storage' as const,
+          }
+        },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: {
+            type: 'storage' as const,
+          }
+        },
+        {
+          binding: 3,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: {
+            type: 'storage' as const,
+          }
+        }
+      ]
+    });
+    this.buffers = this.initBuffers(this.device, buffers);
+    this.bindGroups = this.initBindGroups(this.device, bindGroups);
+
 
     const shader = this.device.createShaderModule({ code: this.getShaderCode(this.shaderDetails.source) });
     this.pipeline = this.initPipeline(this.device, shader, this.shaderDetails);
-
-    this.context = this.initCanvas(this.device, this.canvas);
-
-    this.buffers = this.initBuffers(this.device, buffers);
-    this.bindGroups = this.initBindGroups(this.device, bindGroups);
   }
 
   cleanup() {
@@ -63,11 +97,6 @@ export default class GPUEngine {
   async execute(workgroupCount: [number, number, number]) {
     if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
     const device = this.validateDevice(this.device);
-
-    // if (!this.areBindGroupsEqual(this.currentBindGroupState, this.desiredBindGroupState)) {
-    //   this.bindGroups = this.initBindGroups(device, this.desiredBindGroupState);
-    //   this.currentBindGroupState = this.desiredBindGroupState;
-    // }
 
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
@@ -154,8 +183,12 @@ export default class GPUEngine {
 
   private initPipeline(device: GPUDevice, shader: GPUShaderModule, details: GPUEngineShaderDetails) { 
     if (details.type === 'compute') {
+      const pipelineLayout = device.createPipelineLayout({
+        bindGroupLayouts: [this.bindGroupLayout!]
+      });
+
       return device.createComputePipeline({
-        layout: 'auto',
+        layout: pipelineLayout,
         compute: {
           module: shader,
           entryPoint: details.computeEntryPoint || 'computeMain',
@@ -205,7 +238,8 @@ export default class GPUEngine {
       const buffer = device.createBuffer({
         size,
         usage,
-        mappedAtCreation: !!data
+        mappedAtCreation: !!data,
+        label: name
       });
 
       if (data) {
@@ -261,16 +295,19 @@ export default class GPUEngine {
     const bindGroups: Array<GPUBindGroup> = [];
 
     bindGroupDescriptions.forEach((desc) => {
+      const entries = desc.map((bufferName, nestedIdx) => {
+        const buffer = this.buffers.get(bufferName);
+        if (!buffer)
+          throw new Error(`Failed to create bind groups: could not find a buffer named ${bufferName}`)
+
+        return { binding: nestedIdx, resource: { buffer }};
+      });
+
       const bg = device.createBindGroup({
         // does this index need to change?
-        layout: this.pipeline!.getBindGroupLayout(0),
-        entries: desc.map((bufferName, nestedIdx) => {
-          const buffer = this.buffers.get(bufferName);
-          if (!buffer)
-            throw new Error(`Failed to create bind groups: could not find a buffer named ${bufferName}`)
-
-          return { binding: nestedIdx, resource: { buffer }};
-        })
+        layout: this.bindGroupLayout!,
+        label: desc.join(':'),
+        entries,
       });
 
       bindGroups.push(bg);
@@ -315,5 +352,9 @@ export default class GPUEngine {
     }
 
     return true;
+  }
+
+  getBindGroups() {
+    return this.bindGroups;
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { GPUBufferUsage } from '@/constants';
+import { GPUBufferUsage, GPUShaderStage } from '@/constants';
 import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
 import type { Dimensions } from '@/types';
 import computeDivisions from '@/shaders/computeDivisions.wgsl';
@@ -39,7 +39,7 @@ const buildGPUResourceDescriptions = (
       {
         name: 'inputFrameData',
         sizeInBytes: frameDataBufferSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
       },
       {
         name: 'outputFrameData',
@@ -57,13 +57,14 @@ const buildGPUResourceDescriptions = (
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
       }
     ],
-    bindGroups: [
-      ['parameters'],
-      // computeDivisions.wgsl
-      ['inputFrameData', 'divisions'],
-      // regionConvolution.wgsl
-      ['divisions', 'inputFrameData', 'outputFrameData']
-    ]
+    bindGroups: [['parameters', 'divisions', 'inputFrameData', 'outputFrameData']]
+    // [
+    //   ['parameters'],
+    //   // computeDivisions.wgsl
+    //   ['inputFrameData', 'divisions'],
+    //   // regionConvolution.wgsl
+    //   ['divisions', 'inputFrameData', 'outputFrameData']
+    // ]
   };
 }
 
@@ -115,14 +116,52 @@ export default function BacklightSimulator(props: Props) {
       const frame = ctx.getImageData(0, 0, width, height);
       try {
         const tick = Date.now();
-        console.log(engine.hasBuffer('inputFrameData'));
-        // await engine.writeBuffer('inputFrameData', frame.data);
-        // one workgroup per division
+
+        // write frame data to uploadBuffer
+        const uploadBuffer = engine.buffers.get('upload')!;
+        await uploadBuffer.mapAsync(GPUMapMode.WRITE);
+
+        new Uint8Array(uploadBuffer.getMappedRange()).set(frame.data);
+        uploadBuffer.unmap();
+
+        // copy upload buffer to inputFrame Data
+        const commandEncoder = engine.device!.createCommandEncoder();
+        commandEncoder.copyBufferToBuffer(
+          uploadBuffer,
+          0,
+          engine.buffers.get('inputFrameData')!,
+          0,
+          canvas.width * canvas.height * 4
+        );
+        engine.device!.queue.submit([commandEncoder.finish()]);
+        await engine.device!.queue.onSubmittedWorkDone();
+
+        // execute, one workgroup per division
         await engine.execute([horizontalDivisions, verticalDivisions, 1]);
+
+        // copy inputFrameData back to download
+        const downloadBuffer = engine.buffers.get('download')!;
+        const commandEncoder2 = engine.device!.createCommandEncoder();
+        commandEncoder2.copyBufferToBuffer(
+          engine.buffers.get('divisions')!,
+          0,
+          downloadBuffer,
+          0,
+          canvas.width * canvas.height * 4
+        )
+        engine.device!.queue.submit([commandEncoder2.finish()]);
+        await engine.device!.queue.onSubmittedWorkDone();
+
+        // map download
+        await downloadBuffer.mapAsync(GPUMapMode.READ);
+        const data = new Uint32Array(downloadBuffer.getMappedRange().slice(0));
+        downloadBuffer.unmap();
+
         const tock = Date.now();
 
-        console.log(`GPU operations took ${tock - tick}ms`);
+        console.log(`GPU operations took ${tock - tick}ms`);        
 
+        frame.data.set(data);
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
@@ -160,7 +199,7 @@ export default function BacklightSimulator(props: Props) {
       const handleResize = () => {
         canvas.width = width;
         canvas.height = height;
-        engine.cleanup();
+        // engine.cleanup();
       };
       window.addEventListener('resize', handleResize);
       handleResize();
@@ -168,7 +207,7 @@ export default function BacklightSimulator(props: Props) {
       return () => {
         video.removeEventListener('play', startFrameProcessing);
         window.removeEventListener('resize', handleResize);
-        engine.cleanup();
+        // engine.cleanup();
       };
     },
     [handleFrame, height, width, horizontalDivisions, verticalDivisions, isGPUReady]
@@ -199,8 +238,27 @@ export default function BacklightSimulator(props: Props) {
           canvasDimensions
         );
 
+        
         await engine.initialize(buffers, bindGroups);
         engineRef.current = engine;
+
+        // // do bind groups manually
+        // engine.device?.createBindGroupLayout({
+        //   entries: [
+        //     {
+        //       binding: 0,
+        //       visibility: GPUShaderStage.COMPUTE,
+        //       buffer: { type: 'uniform' as const }
+        //     },
+        //     {
+        //       binding: 1,
+        //       visibility: GPUShaderStage.COMPUTE,
+        //       buffer: { type: }
+        //     }
+        //   ]
+        // })
+
+
         setIsGPUReady(true);
       } catch (err) {
         console.error('BIG ERROR', err);
@@ -227,7 +285,6 @@ export default function BacklightSimulator(props: Props) {
     >
       <canvas ref={canvasRef} width={width} height={height}></canvas>
       <video ref={videoRef} id='video' src={videoSrc} muted loop controls />
-      {/* <button onClick={() => sendGpuData()}>send gpu data</button> */}
     </div>
   );
 }
