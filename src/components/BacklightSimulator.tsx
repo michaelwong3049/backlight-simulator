@@ -74,7 +74,8 @@ export default function BacklightSimulator(props: Props) {
         await engine.writeBuffer('computeBuffer', frame.data);
 
         const shaderTick = Date.now();
-        await engine.execute([64, 1, 1]);
+        await engine.execute([horizontalDivisions, verticalDivisions, 1]);
+        // 64 threads per workgroup * 64 workgroups * 720 * 640
         const shaderTock = Date.now();
         console.log(`Spent ${shaderTock - shaderTick}ms on the GPU shader`)
 

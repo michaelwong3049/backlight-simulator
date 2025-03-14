@@ -36,15 +36,147 @@ struct Position {
 @group(0) @binding(0) var<storage, read_write> computeBuffer: array<u32>;
 @group(0) @binding(1) var<storage, read_write> paramBuffer: Params;
 // [division1 row, division1 col, division width, division1 height, division1 color, division2 row, division2 col, ...]
-@group(0) @binding(2) var<storage, read_write> divisionBuffer: array<u32>;
+@group(0) @binding(2) var<storage, read_write> divisionBuffer: array<Division>;
 
-@compute @workgroup_size(64)
-fn computeMain(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let idx = global_id.x;
-  if (idx >= arrayLength(&computeBuffer)) {
-    return;
+/**
+  3 horizontal, 3 vertical
+
+  a b c
+  d e f
+  g h i
+
+  a b c d e f g h i
+
+  workgroup.xy -> a division letter
+
+  workgroup.00 -> a
+  .01 -> b
+  .12 -> f
+
+  
+*/
+
+// computeMain(workgroup = [0, 0, 0]) -> workgroup_id: division
+  // computeMain(workgroup=00, thread=00)
+  // computeMain(workgroup=00, thread=01)
+  // computeMain(workgroup=00, thread=02)
+  // computeMain(workgroup=00, thread=10)
+
+// computeMain(workgroup = [0, 1, 0])
+// computeMain(workgroup = [0, 2, 0])
+@compute @workgroup_size(16,16,1)
+fn computeMain(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(workgroup_id) workgroup_id: vec3<u32>, // [x, y, z] 0, 1, 1 
+  @builtin(local_invocation_id) thread_id: vec3<u32>, // [xyz]
+) {
+  // which idx in the division buffer paramBuffer.horizontalDivisionesponsi;
+  let division_idx = i32(workgroup_id.x + (horizontalDivisions * workgroup_id.y));
+  let division_height = ceil(f32(canvasHeight) / f32(verticalDivisions));
+  let division_width = ceil(f32(canvasWidth) / f32(horizontalDivisions));
+
+  // at this we know everything about our division (height, width, idx)
+
+  // what pixel does my division start on?
+  let startRow = i32(f32(workgroup_id.x) * division_width);
+  let startCol = i32(f32(workgroup_id.y) * division_height);
+
+  var this_thread_color_sum = vec3<u32>(0); // rgba [r,g,b,a]
+  var this_thread_pixel_count = 0;
+
+  // based on my thread, stride loop through the division
+  // and update MY color sum AND MY count
+  /*
+    for (each pixel in frameData) {
+      if (idx % my_thread_# == 0) {
+        update red in this_thread_color_sum
+      }
+    }
+  */
+  // arr = [1,2,3,4,5,6,7,8,9,10]
+  // for(var x = 0; x < arr.length; x += 4)
+
+  // workgroup size = 4x4x1, ARRAY LENGTH = 20;
+  // thread 0 -> 0, 4,  8, 12, 16
+  // thread 1 -> 1, 5,  9, 13, 17
+  // thread 2 -> 2, 6, 10, 14, 18
+  // thread 3 -> 3, 7, 11, 15, 19
+
+  const num_threads = 16;
+  for (var row = thread_id.y; row < division_height; row += num_threads) {
+    for (var col = thread_id.x; col < division_width; col += num_threads) {
+      // let currentRow = startRow + row;
+      // let currentCol = startCol + col;
+      let pixel_idx = currentRow * division_width + currentCol;
+
+      if (pixel_idx >= endRow) {
+        continue;
+      }
+
+      let color = computeBuffer[pixel_idx]; // packed u32
+      let split_color: vec3<f32> = unpackRGBA(color);
+
+      this_thread_color_sum.r += split_color.r
+      this_thread_color_sum.g += split_color.g
+      this_thread_color_sum.b += split_color.b
+      this_thread_pixel_count += 1
+    }
   }
 
+  // force waits until every thread gets to this point
+  workgroupBarrier();
+
+  // by this each thread (0, 1, 2, 3) knows its own color sum and pixel count
+  // how do we sum them up?
+
+  // create another color sum and have each thread update this single sum
+  var workgroup_color_sum: array<vec3<u32>, 256>;
+  var workgroup_pixel_count: array<u32, 256>;
+
+  // figure if i'm a 2D thread, whats my 1D workgroup_color_sum index?
+  var thread_color_index = thread_id.x + (16 * thread_id.y);
+
+  // in the workgroup-level array, share this thread's color sum and pixel count
+  workgroup_color_sum[thread_color_index] = this_thread_color_sum;
+  workgroup_pixel_count[thread_color_index] = this_thread_pixel_count;
+  
+  // how do reduce the workgroup-level array to a single color sum and pixel count?
+  // hint: i want to do this in a gpu-smart way
+  
+  
+  // workgroup_color_sum = [  thread0(rgb), thread1(rgb), thread2(rgb), thread3(rgb) ]
+  // workgroup_pixel_count = [ thread0(count), thread1(count), thread2(count), thread3(count) ]
+  for (var offset = 128; offset > 0; offset /= 2) {
+    // we need each thread to "collapse its partner" before we continue
+    workgroupBarrier();
+
+    // left index - this will contain self + right
+    var left_index = thread_color_index;
+
+    // right index is the value to bring to the left
+    var right_index = thread_color_index + offset;
+
+    // collapse them
+    if (thread_color_index < offset) {
+      workgroup_color_sum[left_index] += workgroup_color_sum[right_index];
+      workgroup_pixel_count[left_index] += workgroup_pixel_count[right_index];
+    }
+  }
+
+  // at this point, all of the color_sum and pixel count 
+  // are in workgroup_arr[0];
+  let avg_r = ceil(workgroup_color_sum[0].r / workgroup_pixel_count[0]);
+  let avg_g = ceil(workgroup_color_sum[0].g / workgroup_pixel_count[0]);
+  let avg_b = ceil(workgroup_color_sum[0].b / workgroup_pixel_count[0]);
+  division[division_idx] = repackRBGA(r, g, b, 255);
+
+
+
+
+
+
+
+  
   // const newFrame: array<u32>; // maybe should set size? for now its dynamic
   let videoDimensions = Dimensions(i32(paramBuffer.videoWidth), i32(paramBuffer.videoHeight));
   let canvasDimensions = Dimensions(i32(paramBuffer.canvasWidth), i32(paramBuffer.canvasHeight));
