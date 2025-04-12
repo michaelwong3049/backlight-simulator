@@ -220,6 +220,10 @@ export default class GPUEngine {
     return buffers;
   }
 
+  hasBuffer(name: string) {
+    return this.buffers.has(name);
+  }
+
   createBuffer(bufferDescription: GPUEngineBuffer, bindGroupIdx: number) {
     const device = this.validateDevice(this.device);
     const { name, sizeInBytes: size, usage, data } = bufferDescription;

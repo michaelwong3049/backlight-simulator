@@ -83,10 +83,13 @@ export default function BacklightSimulator(props: Props) {
         const params = await engine.readBuffer("paramBuffer");
         const divisionBuffer = await engine.readBuffer('divisionBuffer');
 
+        // console.log(new Uint8Array(divisionBuffer));
+
         const tock = Date.now();
         console.log(`GPU operations took ${tock - tick}ms`);
 
         const divisionData = new Uint32Array(divisionBuffer);
+        console.log(new Uint8Array(divisionData.buffer));
         
         // frame.data.set(new Uint8Array(data));
         // ctx.putImageData(frame, 0, 0);
@@ -146,14 +149,16 @@ export default function BacklightSimulator(props: Props) {
         ]);
         await engine.writeBuffer('paramBuffer', params);
 
-        engine.createBuffer({
-          name: 'divisionBuffer',
-          // each division has 5 numbers, each 4 bytes
-          // we have horiztonal * vertical divisions.
-          sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
-          // maybe this usage is too much
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        }, 0);
+        if (!engine.hasBuffer('divisionBuffer')) {
+          engine.createBuffer({
+            name: 'divisionBuffer',
+            // each division has 5 numbers, each 4 bytes
+            // we have horiztonal * vertical divisions.
+            sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
+            // maybe this usage is too much
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+          }, 0);
+        }
 
         video.requestVideoFrameCallback(() =>
           handleFrame(
