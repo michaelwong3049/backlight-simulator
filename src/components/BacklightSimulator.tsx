@@ -52,7 +52,7 @@ export default function BacklightSimulator(props: Props) {
         return;
       }
 
-      ctx.clearRect(0, 0, width, height);
+      // ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
       // TODO: we could even potentially use an offscreen canvas to save on render times
       ctx.drawImage(
@@ -71,7 +71,8 @@ export default function BacklightSimulator(props: Props) {
       try {
         const tick = Date.now();
 
-        await engine.writeBuffer('computeBuffer', frame.data);
+        const packedFrameData = new Uint32Array(frame.data.buffer);
+        await engine.writeBuffer('computeBuffer', packedFrameData);
 
         const shaderTick = Date.now();
         await engine.execute([horizontalDivisions, verticalDivisions, 1]);
@@ -89,10 +90,53 @@ export default function BacklightSimulator(props: Props) {
         console.log(`GPU operations took ${tock - tick}ms`);
 
         const divisionData = new Uint32Array(divisionBuffer);
-        console.log(new Uint8Array(divisionData.buffer));
+
+        console.log(divisionData);
+        const fourth = divisionData[4];
+        const fourthRed = fourth & 255;
+        const fourthGreen = (fourth >> 8) & 255;
+        const fourthBlue = (fourth >> 16) & 255;
+        const fourthAlpha = (fourth >> 24) & 255;
+
+        const newArray = new Uint8ClampedArray(frame.data.length);
+
+        for (let i = 0; i < frame.data.length; i += 4) {
+          newArray[i] = fourthRed;
+          newArray[i + 1] = fourthBlue;
+          newArray[i + 2] = fourthGreen;
+          newArray[i + 3] = fourthAlpha;
+        }
+
+        // for (let i = 0; i < newArray.length; i += 5) {
+        //   const row = divisionData[i]
+        //   const col = divisionData[i + 1]
+        //   const width = divisionData[i + 2]
+        //   const height = divisionData[i + 3]
+        //   const color = divisionData[i + 4]
+        //
+        //   const red = color & 255;
+        //   const blue = (color >> 8) & 255;
+        //   const green = (color >> 16) & 255;
+        //   const alpha = (color >> 24) & 255;
+        //
+        //   // iterate through this row to populate
+        //   for (let r = row; r < row + height; r++) {
+        //     for (let c = col; c < col + width; c++) {
+        //       let pixelIdx = (r * frame.width + c);
+        //
+        //       newArray[pixelIdx] = red;
+        //       newArray[pixelIdx + 1] = blue;
+        //       newArray[pixelIdx + 2] = green;
+        //       newArray[pixelIdx + 3] = alpha;
+        //     }
+        //   }
+        // }
+    
+        const newFrame = new ImageData(newArray, width, height)
         
-        // frame.data.set(new Uint8Array(data));
-        // ctx.putImageData(frame, 0, 0);
+        // frame.data.set(newFrame);
+        ctx.putImageData(newFrame, 0, 0);
+
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
@@ -154,7 +198,7 @@ export default function BacklightSimulator(props: Props) {
             name: 'divisionBuffer',
             // each division has 5 numbers, each 4 bytes
             // we have horiztonal * vertical divisions.
-            sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4,
+            sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4, // 180
             // maybe this usage is too much
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
           }, 0);

@@ -290,13 +290,13 @@ export default class GPUEngine {
     if(currentBindGroupState.length !== desiredBindGroupState.length) return false;
     
     for(let bindGroup = 0; bindGroup < currentBindGroupState.length; bindGroup++) {
-      let currCurrentBindGroup = currentBindGroupState[bindGroup];
-      let currDesiredBindGroup = desiredBindGroupState[bindGroup];
-      if(currCurrentBindGroup.length !== currDesiredBindGroup.length) return false;
+      let curr = currentBindGroupState[bindGroup];
+      let desired = desiredBindGroupState[bindGroup];
+      if(curr.length !== desired.length) return false;
 
-      for(let buffer = 0; buffer < currDesiredBindGroup.length; buffer++) {
+      for(let buffer = 0; buffer < curr.length; buffer++) {
         // funny naming?
-        if(currCurrentBindGroup[buffer] != currDesiredBindGroup[buffer]) {
+        if(curr[buffer] != desired[buffer]) {
           return false;
         }
       }

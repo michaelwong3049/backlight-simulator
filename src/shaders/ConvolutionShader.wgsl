@@ -1,6 +1,6 @@
 struct Params { 
   horizontalDivisions: u32,
-  verticalDivisions: u32,
+  verticalDivisions: u32, 
   videoHeight: u32,
   videoWidth: u32,
   canvasWidth: u32,
@@ -53,7 +53,7 @@ struct Position {
   workgroup.00 -> a
   .01 -> b
   .12 -> f
-
+*/
 
 // computeMain(workgroup = [0, 0, 0]) -> workgroup_id: division
   // computeMain(workgroup=00, thread=00)
@@ -63,17 +63,6 @@ struct Position {
 
 // computeMain(workgroup = [0, 1, 0])
 // computeMain(workgroup = [0, 2, 0])
-
-
-  workergroup and threads and image logic:
-  Imagine we have this 256x256 image. Lets say that we are going to the default @workgroup_size of [16,16,1]. This means that EACH workgroup has 16x16 threads (256 threads each workgroup)
-  - But how do we know how many workgroups to have? We basically are splitting the image that we are given into X amount of workgroups ... then in EACH workgroup, the threads do the heavily lifting to do the math.
-    The # of pixels that our image has 65536 pixels. Since we have 256 threads, that means that we need 65536 pixels / 256 threads, giving us 256 TOTAL workgroups ... but workgroups are "splitting" up this image to do
-    some calculations ... since this an image is 2D, we need to separate this for the X and Y. square root of 256 = 16. 
-  - ** NOTE ** im not 100% sure how this would work for our image (aka splitting up the workgroups, since we have a rectange given the videoFrame dimensions)
-
-*/
-
 
 // recall: the workergroups that we are using here are like a 3d array of threads, where each row would be the workergroup and each column would be the thread 
 @compute @workgroup_size(16,16,1)
@@ -113,12 +102,17 @@ fn computeMain(
     }
   */
 
+  // p1 = [255,24, 32, 16]
+  // p2 = [255,24, 32, 16]
   // workgroup size = 2x2x1, ARRAY LENGTH = 20;
   // for(var x = 0; x < arr.length; x += 4)
   // thread 0 -> 0, 4,  8, 12, 16
   // thread 1 -> 1, 5,  9, 13, 17
   // thread 2 -> 2, 6, 10, 14, 18
   // thread 3 -> 3, 7, 11, 15, 19
+
+  // ^^^ so thread 0 would be responsible for pixel 0, pixel 4, pixel 12 --> this is cuz:
+  // we packed uint8clapmedarray to Uint32array --> meaning we have 4 bytes for 1 pixel -->
 
   const num_threads = 16;
   /*
@@ -141,6 +135,8 @@ fn computeMain(
   */
   for (var row = thread_id.y; row < u32(division_height); row += num_threads) {
     for (var col = thread_id.x; col < u32(division_width); col += num_threads) {
+      // im concerned with this row += num_threads...
+      // we are passing frame.data (uint8clamped) to the computeBuffer here and we are not packing this as Uint32? might be errors
       let pixel_idx = i32(row * u32(division_width) + col);
 
       if (pixel_idx >= endRow) {
@@ -177,7 +173,9 @@ fn computeMain(
   
   // how do reduce the workgroup-level array to a single color sum and pixel count?
   // hint: i want to do this in a gpu-smart way  
-  
+
+  workgroupBarrier();
+
   // workgroup_color_sum = [  thread0.rgb, thread1.rgb, thread2.rgb, thread3.rgb ]
   // workgroup_pixel_count = [ thread0.count, thread1.count, thread2.count, thread3.count ]
   for (var offset: u32 = 128; offset > 0; offset /= 2) {
@@ -203,13 +201,36 @@ fn computeMain(
   let avg_g = ceil(f32(workgroup_color_sum[0].g) / f32(workgroup_pixel_count[0]));
   let avg_b = ceil(f32(workgroup_color_sum[0].b) / f32(workgroup_pixel_count[0]));
   var color_array = vec4<u32>(u32(avg_r), u32(avg_g), u32(avg_b), 255);
-  divisionBuffer[division_idx] = repackRBGA(color_array);
+  divisionBuffer[division_idx] = u32(repackRBGA(color_array));
+
+  // divisionBuffer[(division_idx * 5)] = u32(startRow);
+  // divisionBuffer[(division_idx * 5) + 1] = u32(startCol);
+  // divisionBuffer[(division_idx * 5) + 2] = u32(ceil(f32(paramBuffer.videoWidth) / f32(paramBuffer.horizontalDivisions)));
+  // divisionBuffer[(division_idx * 5) + 3] = u32(ceil(f32(paramBuffer.videoHeight) / f32(paramBuffer.verticalDivisions)));
+  // divisionBuffer[(division_idx * 5) + 4] = u32(repackRBGA(color_array));
   // --- DONE ---
 }
 
 // takes a u32 number -> returns a vec4 of rgba
 fn unpackRGBA(color: u32) -> vec4<u32> {
   var color_array: vec4<u32>;
+
+  /*
+  11111111 = 255
+  00000000 00000000 00000000 00000001 --> uint32 for 1
+  00000000 00000000 00000000 11111111 --> uint32 255
+  = 00000000 00000000 00000000 00000001 --> uint32 for 1
+
+  bitwise &
+  00000000 00000000 00000000 11111111 --> uint32 255
+ =00000000 00000000 00000000 00000001 --> uint32 for 4278190081
+ =00000000 00000000 00000000 00000001 --> uint32 for 4278190081
+
+  bitwise & with 255
+  00000000 00000000 00000000 11111111 --> uint32 for 4278190081
+  00000000 00000000 00000000 11111111 --> uint32 255
+  = 00000000 00000000 00000000 11111111 --> uint32 255
+  */
 
   color_array.r = color & 255;
   color_array.g = (color >> 8) & 255;
