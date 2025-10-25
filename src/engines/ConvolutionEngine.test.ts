@@ -12,15 +12,16 @@
 // Create-React-App docs: https://create-react-app.dev/docs/running-tests/
 
 import type { Dimensions, Division, Position } from "@/types";
-import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/utils/constants";
+import { RED_CHANNEL_OFFSET, GREEN_CHANNEL_OFFSET, BLUE_CHANNEL_OFFSET, ALPHA_CHANNEL_OFFSET } from "@/constants";
 import {
   computeDivisions,
   findVideoPositionOnCanvas,
   getAverageColor,
   regionConvolution
-} from "@/utils/colorManipulation";
+} from "@/engines/ConvolutionEngine";
 import { EXPECTED_TEST_CASE_1_BEFORE_CONVOLVE, EXPECTED_TEST_CASE_1_AFTER_CONVOLVE } from "@/utils/testingData";
 import { BrowserCompatibleImageData } from "@/utils/BrowserCompatibleImageData";
+import GPUEngine from "./GPUEngine";
 global.ImageData = BrowserCompatibleImageData;
 
 // Use a describe block to group related tests, e.g. all of the tests for the
@@ -226,4 +227,17 @@ describe("colorManipulation", () => {
 
     })
   })
+
+  // describe("shouldCreateBindGroup", () => {
+  //   it.only("makes sure that we can create a bind group", () => {
+  //     const a = [['a', 'b'], ['c']];
+  //     const b = [['a', 'b'], ['c']];
+
+  //     const res = GPUEngine.shouldCreateBindGroups(a,b)
+  //     console.log(res);
+
+  //     expect(res).toEqual(true);
+
+  //   }) 
+  // })
 });

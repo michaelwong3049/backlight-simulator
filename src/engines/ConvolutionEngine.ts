@@ -4,7 +4,7 @@ import {
   BLUE_CHANNEL_OFFSET,
   GREEN_CHANNEL_OFFSET,
   RED_CHANNEL_OFFSET,
-} from '@/utils/constants';
+} from '@/constants';
 
 export function computeBacklightFrame(
   // TODO: remove ctx later, we should be able to do some assignments on frame.data
