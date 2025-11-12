@@ -17,42 +17,57 @@ export interface GPUEngineShaderDetails {
 }
 
 export default class GPUEngine {
+  device: GPUDevice;
+  canvasFormat: GPUTextureFormat;
+
+  shaders: Map<string, GPUComputePipeline | GPURenderPipeline>;
+
   readonly shaderDetails: GPUEngineShaderDetails;
   readonly shaderType: 'compute' | 'render';
 
-  device?: GPUDevice;
-  pipeline?: GPUComputePipeline | GPURenderPipeline | null;
+  // pipeline?: GPUComputePipeline | GPURenderPipeline | null;
   canvas?: HTMLCanvasElement;
   context?: GPUCanvasContext | null;
 
   private currentBindGroupState: Array<Array<string>> = [];
   private desiredBindGroupState: Array<Array<string>> = [];
-  private bindGroups: Array<GPUBindGroup> = []; 
+  private bindGroups = new Map<string, GPUBindGroup>();
   private buffers = new Map<string, GPUBuffer>(); 
 
   private isProcessingOperation = false;
 
-  constructor(shader: GPUEngineShaderDetails, canvas?: HTMLCanvasElement) {
-    this.shaderDetails = shader;
-    this.canvas = canvas;
-    this.shaderType = shader.type;
-
-    if (shader.type === 'render') {
-      console.warn('GPUEngine does not fully support render pipelines yet');
-    }
+  constructor(device: GPUDevice, canvasFormat: GPUTextureFormat, shaderToPipeline: Map<string, GPUComputePipeline | GPURenderPipeline>) {
+    this.device = device;
+    this.canvasFormat = canvasFormat;
+    this.shaders = shaderToPipeline;
   }
 
-  // bindGroups is array of buffer names created, top level arr is bind group idx
-  async initialize(buffers: Array<GPUEngineBuffer>, bindGroups: Array<Array<string>>) {
-    this.device = await this.initGPUDevice();
+  static async initialize(shaders: { [name: string]: GPUEngineShaderDetails }): Promise<GPUEngine> {
+    if (!navigator.gpu) throw new Error('WebGPU not supported');
 
-    const shader = this.device.createShaderModule({ code: this.getShaderCode(this.shaderDetails.source) });
-    this.pipeline = this.initPipeline(this.device, shader, this.shaderDetails);
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('No GPU adapter found');
+  
+    const device = await adapter.requestDevice();
+    if (!device) throw new Error('Failed to get GPU device');
 
-    this.context = this.initCanvas(this.device, this.canvas);
-    this.buffers = this.initBuffers(this.device, buffers);
+    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
+    Object.entries(shaders).forEach(([key, val]) => {
+      let pipeline = GPUEngine.initializePipeline(device, val)
+      shaderToPipeline.set(key, pipeline);
+    });
 
-    this.desiredBindGroupState = bindGroups;
+    return new GPUEngine(device, navigator.gpu.getPreferredCanvasFormat(), shaderToPipeline);
+  }
+
+  initializeCanvas(canvas: HTMLCanvasElement) {  
+    const context = canvas.getContext('webgpu');
+    context!.configure({
+      device: this.device,
+      format: this.canvasFormat
+    });
+  
+    return context;
   }
 
   cleanup() {
@@ -63,12 +78,7 @@ export default class GPUEngine {
   // overspecified for compute shader
   async execute(workgroupCount: [number, number, number]) {
     if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
-    const device = this.validateDevice(this.device);
-
-    if (!this.areBindGroupsEqual(this.currentBindGroupState, this.desiredBindGroupState)) {
-      this.bindGroups = this.initBindGroups(device, this.desiredBindGroupState);
-      this.currentBindGroupState = this.desiredBindGroupState;
-    }
+    const { device } = this;
 
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
@@ -89,7 +99,7 @@ export default class GPUEngine {
   
   // maybe overspecified for numbers?
   async writeBuffer(name: string, data: BufferSource | SharedArrayBuffer) {
-    const device = this.validateDevice(this.device);
+    const { device } = this;
     
     const buffer = this.buffers.get(name);
     if (!buffer) throw new Error(`Could not find a buffer named ${name}`)
@@ -101,7 +111,7 @@ export default class GPUEngine {
   }
   
   async readBuffer(name: string): Promise<ArrayBuffer> {
-    const device = this.validateDevice(this.device);
+    const { device } = this;
     
     const buffer = this.buffers.get(name);
     if (!buffer) throw new Error(`Could not find a buffer named ${name}`)
@@ -140,168 +150,94 @@ export default class GPUEngine {
   isProcessing() {
     return this.isProcessingOperation;
   }
-  
-  private async initGPUDevice() {
-    if (!navigator.gpu) throw new Error('WebGPU not supported');
 
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) throw new Error('No GPU adapter found');
-  
-    const device = await adapter.requestDevice();
-    if (!device) throw new Error('Failed to get GPU device');
-  
-    return device;
-  }
+  private static initializePipeline(device: GPUDevice, shader: GPUEngineShaderDetails) { 
+    const code = typeof shader.source === 'string' ? shader.source : shader.source.default;
+    const shaderModule = device.createShaderModule({ code });
 
-  private initPipeline(device: GPUDevice, shader: GPUShaderModule, details: GPUEngineShaderDetails) { 
-    if (details.type === 'compute') {
+    if (shader.type === "compute") {
       return device.createComputePipeline({
         layout: 'auto',
         compute: {
-          module: shader,
-          entryPoint: details.computeEntryPoint || 'computeMain',
+          module: shaderModule,
+          entryPoint: shader.computeEntryPoint ?? 'computeMain',
         }
       });
-    } else if (details.type === 'render') {
+    } else if (shader.type === 'render') {
       return device.createRenderPipeline({
         layout: 'auto',
         vertex: {
-          module: shader,
-          entryPoint: details.vertexEntryPoint || 'vertexMain',
+          module: shaderModule,
+          entryPoint: shader.vertexEntryPoint ?? 'vertexMain',
         },
         fragment: {
-          module: shader,
-          entryPoint: details.fragmentEntryPoint || 'fragmentMain',
+          module: shaderModule,
+          entryPoint: shader.fragmentEntryPoint ?? 'fragmentMain',
+
+          // TODO: we'll need this eventually
           targets: [null],
         },
       });
+    } else {
+      throw new Error("shader.type is not compute or not render");
     }
-  }
-
-  private initCanvas(device: GPUDevice, canvas?: HTMLCanvasElement) {
-    if (!canvas) return null; 
-  
-    const context = canvas.getContext('webgpu');
-    const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-    context?.configure({
-      device,
-      format: canvasFormat,
-      alphaMode: 'premultiplied',
-    });
-  
-    return context;
-  }
-
-  private initBuffers(device: GPUDevice, bufferDescriptions: Array<GPUEngineBuffer>) {
-    const buffers = new Map<string, GPUBuffer>();
-
-    bufferDescriptions.forEach((desc) => {
-      const { name, sizeInBytes: size, usage, data } = desc;
-
-      // delete any buffer with this name already
-      if (buffers.has(name)) {
-        buffers.get(name)!.destroy();
-      }
-
-      const buffer = device.createBuffer({
-        size,
-        usage,
-        mappedAtCreation: !!data
-      });
-
-      if (data) {
-        new Float32Array(buffer.getMappedRange()).set(data);
-        buffer.unmap();
-      }
-
-      buffers.set(name, buffer);
-    });
-
-    return buffers;
   }
 
   hasBuffer(name: string) {
     return this.buffers.has(name);
   }
 
-  createBuffer(bufferDescription: GPUEngineBuffer, bindGroupIdx: number) {
-    const device = this.validateDevice(this.device);
-    const { name, sizeInBytes: size, usage, data } = bufferDescription;
+  // TODO(andy/michael): assume this is the primary
+  createBuffers(bufferDescriptions: Array<GPUEngineBuffer>) { // bindGroupIdx: number) {
+    const { device } = this;
 
-    if (this.buffers.has(name)) {
-      throw new Error(`Failed to create buffer, buffer named "${name}" exists already`);
-    }
+    bufferDescriptions.forEach((desc) => {
+      const { name, sizeInBytes: size, usage, data } = desc;
 
-    const buffer = device.createBuffer({
-      size,
-      usage,
+      if (this.buffers.has(name)) {
+        throw new Error(`Failed to create buffer, buffer named "${name}" exists already`);
+      }
+
+      const buffer = device.createBuffer({
+        size,
+        usage,
+      });
+      this.buffers.set(name, buffer);
     });
-    this.buffers.set(name, buffer);
-
-    if (this.currentBindGroupState.length !== 0) {
-      this.desiredBindGroupState = this.currentBindGroupState;
-    }
-
-    this.desiredBindGroupState[bindGroupIdx].push(name);
   }
 
-  private initBindGroups(device: GPUDevice, bindGroupDescriptions: Array<Array<string>>) {
-    const bindGroups: Array<GPUBindGroup> = [];
+  destroyBuffer(name: string) {
+    this.buffers.get(name)?.destroy();
+  }
 
-    bindGroupDescriptions.forEach((desc) => {
-      const bg = device.createBindGroup({
-        // does this index need to change?
-        layout: this.pipeline!.getBindGroupLayout(0),
-        entries: desc.map((bufferName, nestedIdx) => {
-          const buffer = this.buffers.get(bufferName);
-          if (!buffer)
-            throw new Error(`Failed to create bind groups: could not find a buffer named ${bufferName}`)
+  // [ ['settingsBuffer'], ['frameDataBuffer', 'colorDivisionOutBuffer'] ]
+  // each object is the @group(n), each buffer is the @binding(n) respective to the index
+  createBindGroups(bindGroupDescriptions: Array<{ name: string, visibility: number, buffers: Array<string> }>) {
+    const { device, buffers, bindGroups } = this;
 
-          return { binding: nestedIdx, resource: { buffer }};
+    bindGroupDescriptions.forEach((group, groupIndex) => {
+      const layout = device.createBindGroupLayout({
+        label: `${group.name} - layout`,
+        entries: [
+          {
+            binding: groupIndex,
+            visibility: group.visibility,
+          }
+        ]
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: layout,
+        // list of buffers assigned to this bind group
+        entries: group.buffers.map((bufferName, bufferIndex) => {
+          return {
+            binding: bufferIndex,
+            resource: { buffer: buffers.get(bufferName)! }
+          };
         })
       });
 
-      bindGroups.push(bg);
+      bindGroups.set(group.name, bindGroup);
     });
-
-    return bindGroups;
-  }
-
-  // Helper function to get the shader code string
-  private getShaderCode(source: ShaderSource): string {
-    if (typeof source === 'string') {
-      return source;
-    }
-    return source.default;
-  }
-
-  private validateDevice(device?: GPUDevice): GPUDevice {
-    if (!device) {
-      throw new Error('GPU Device not initialized, did you call `initialize`?')
-    }
-
-    return device;
-  }
-
-  private areBindGroupsEqual(current: Array<Array<string>>, prev: Array<Array<string>>) {
-    const currentBindGroupState = current;
-    const desiredBindGroupState = prev;
-    // return true if current is out of sync with desired
-    if(currentBindGroupState.length !== desiredBindGroupState.length) return false;
-    
-    for(let bindGroup = 0; bindGroup < currentBindGroupState.length; bindGroup++) {
-      let curr = currentBindGroupState[bindGroup];
-      let desired = desiredBindGroupState[bindGroup];
-      if(curr.length !== desired.length) return false;
-
-      for(let buffer = 0; buffer < curr.length; buffer++) {
-        // funny naming?
-        if(curr[buffer] != desired[buffer]) {
-          return false;
-        }
-      }
-    }
-
-    return true;
   }
 }

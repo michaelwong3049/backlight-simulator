@@ -1,22 +1,22 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
 import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
-import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
+import backlightShader from '@/shaders/backlight.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
-const NUM_ELEMENTS = 5324000;
+const NUM_ELEMENTS = 5324000; // TODO(andymina): where did this number come from?
 const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
 const WORKGROUP_SIZE = 64;
 
 const GPU_BUFFERS: Array<GPUEngineBuffer> = [
   {
-    name: 'computeBuffer',
+    name: 'frameDataBuffer',
     sizeInBytes: BUFFER_SIZE_IN_BYTES,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
   },
   {
-    name: 'paramBuffer',
+    name: 'settingsBuffer',
     // TODO(michaelwong): fix to match the size in bytes of params
     sizeInBytes: 24, 
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
@@ -52,20 +52,23 @@ export default function BacklightSimulator(props: Props) {
         return;
       }
 
+      // put video into texture 
+      // const texture = engine.device?.importExternalTexture({ source: })
+
       // ctx.clearRect(0, 0, width, height);
       // TODO: if we're only calculating divisions, we may not need to draw the whole image...
       // TODO: we could even potentially use an offscreen canvas to save on render times
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        video.videoWidth,
-        video.videoHeight,
-        0,
-        0,
-        width,
-        height
-      );
+      // ctx.drawImage(
+      //   video,
+      //   0,
+      //   0,
+      //   video.videoWidth,
+      //   video.videoHeight,
+      //   0,
+      //   0,
+      //   width,
+      //   height
+      // );
 
       const frame = ctx.getImageData(0, 0, width, height);
       try {
@@ -148,22 +151,37 @@ export default function BacklightSimulator(props: Props) {
   );
 
   useEffect(() => {
-    const initGPU = async () => {
-      try {
-        const engine = new GPUEngine(
-          { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
-        );
+    (async () => {
+      const engine = await GPUEngine.initialize({
+        convolution: { type: 'compute', source: backlightShader },
+        videoMapper: { type: 'render', source: backlightShader },
+      });
+      engineRef.current = engine;
 
-        await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
-        engineRef.current = engine;
-        setIsGPUReady(true);
-      } catch (err) {
-        console.error('BIG ERROR', err);
-        setIsGPUReady(false);
-      }
-    };
+      // TODO(michaelwong): Initialize my known buffers
+      engine.createBuffers(GPU_BUFFERS)
+      setIsGPUReady(true);
+    })();
 
-    initGPU();
+    // const initGPU = async () => {
+    //   const engine = await GPUEngine.initialize();
+    //   engineRef.current = engine;
+    //   setIsGPUReady(true);
+      // const engine = new GPUEngine(
+      //   { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
+      // );
+
+      // const engine = new GPUEngine({ 
+      //   source: backlightShader, 
+      //   type: 'render', 
+      //   vertexEntryPoint: 'vertexMain', 
+      //   fragmentEntryPoint: 'fragmentMain'
+      // });
+
+      // await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
+    // };
+
+    // initGPU();
 
     // Cleanup function
     return () => {
@@ -177,10 +195,46 @@ export default function BacklightSimulator(props: Props) {
       const canvas = canvasRef.current;
       const engine = engineRef.current;
       if (!video || !canvas || !isGPUReady || !engine) return;
-      
-      // NOTE: we can disable alpha channel here which should save comp time
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+
+      // Initialize the canvas for speedy GPU rendering
+      engine.initializeCanvas(canvas);
+
+      // Initialize my runime buffers
+      if (!engine.hasBuffer('colorDivisionOutBuffer')) {
+        engine.destroyBuffer('colorDivisionOutBuffer');
+      }
+      engine.createBuffers([{
+        name: 'colorDivisionOutBuffer',
+        // each division has 5 numbers, each 4 bytes
+        // we have horiztonal * vertical divisions.
+        sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4, // 180
+        // TODO(andymina): maybe this usage is too much
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+      }]);
+
+      // // Assign bind groups to my buffers
+      // engine.createBindGroups([
+      //   [  // group 0
+      //     { name: 'settingsBuffer', visibility: GPUShaderStage.COMPUTE }
+      //   ],
+      //   [ // group 1
+      //     { name: 'frameDataBuffer', visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE }, 
+      //     { name: 'colorDivisionOutBuffer', visibility: GPUShaderStage.FRAGMENT }
+      //   ]
+      // ]);
+
+      engine.createBindGroups([
+        {
+          name: 'settingsBindGroup',
+          visibility: GPUShaderStage.COMPUTE,
+          buffers: ['settingsBuffers']
+        },
+        {
+          name: 'dataBindGroup',
+          visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+          buffers: ['frameDataBuffer', 'colorDivisionOutBuffer']
+        }
+      ])
       
       const startFrameProcessing = async () => {
         const params = new Uint32Array([
@@ -192,17 +246,6 @@ export default function BacklightSimulator(props: Props) {
           canvas.height
         ]);
         await engine.writeBuffer('paramBuffer', params);
-
-        if (!engine.hasBuffer('divisionBuffer')) {
-          engine.createBuffer({
-            name: 'divisionBuffer',
-            // each division has 5 numbers, each 4 bytes
-            // we have horiztonal * vertical divisions.
-            sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4, // 180
-            // maybe this usage is too much
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-          }, 0);
-        }
 
         video.requestVideoFrameCallback(() =>
           handleFrame(
