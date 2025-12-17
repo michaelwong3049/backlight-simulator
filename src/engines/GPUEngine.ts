@@ -13,13 +13,14 @@ export interface GPUEngineShaderDetails {
   computeEntryPoint?: string;
   vertexEntryPoint?: string;
   fragmentEntryPoint?: string;
+  bindGroups: Array<{ name: string, visibility: number, buffers: Array<string> }>;
 }
 
 export default class GPUEngine {
   device: GPUDevice;
   canvasFormat: GPUTextureFormat;
 
-  shaders: Map<string, GPUComputePipeline | GPURenderPipeline>;
+  shaders?: Map<string, GPUComputePipeline | GPURenderPipeline>;
 
   videoTexture: GPUTexture;
 
@@ -37,18 +38,18 @@ export default class GPUEngine {
   constructor(
     device: GPUDevice, 
     canvasFormat: GPUTextureFormat, 
-    shaderToPipeline: Map<string, GPUComputePipeline | GPURenderPipeline>, 
+    // shaderToPipeline: Map<string, GPUComputePipeline | GPURenderPipeline>, 
     videoTexture: GPUTexture, 
     buffers: Map<string, GPUBuffer | GPUTexture>
   ) {
       this.device = device;
       this.canvasFormat = canvasFormat;
-      this.shaders = shaderToPipeline;
+      // this.shaders = shaderToPipeline;
       this.videoTexture = videoTexture;
       this.buffers = buffers;
   }
 
-  static async initialize(shaders: { [name: string]: GPUEngineShaderDetails }, videoWidth: number, videoHeight: number, GPU_BUFFERS: Array<GPUEngineBuffer>): Promise<GPUEngine> {
+  static async initialize(videoWidth: number, videoHeight: number, GPU_BUFFERS: Array<GPUEngineBuffer>): Promise<GPUEngine> {
     if (!navigator.gpu) throw new Error('WebGPU not supported');
 
     const adapter = await navigator.gpu.requestAdapter();
@@ -60,11 +61,11 @@ export default class GPUEngine {
     // TODO: speicify for 32 bit value? https://webgpufundamentals.org/webgpu/lessons/webgpu-bind-group-layouts.html - rgba32float
     const preferredCanvasFormat = navigator.gpu.getPreferredCanvasFormat();
 
-    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
-    Object.entries(shaders).forEach(([name, shader]) => {
-      let pipeline = GPUEngine.initializePipeline(device, shader, preferredCanvasFormat)
-      shaderToPipeline.set(name, pipeline);
-    });
+    // const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
+    // Object.entries(shaders).forEach(([name, shader]) => {
+    //   let pipeline = GPUEngine.initializePipeline(device, shader, preferredCanvasFormat)
+    //   shaderToPipeline.set(name, pipeline);
+    // });
 
     let buffers = new Map<string, GPUBuffer | GPUTexture>();
 
@@ -83,7 +84,19 @@ export default class GPUEngine {
     })
     buffers.set(texture.label, texture); // TODO: fix here?!?!??!!
 
-    return new GPUEngine(device, preferredCanvasFormat, shaderToPipeline, texture, buffers);
+    return new GPUEngine(device, preferredCanvasFormat, texture, buffers);
+  }
+
+  prepareForRender(shaders: { [name: string]: GPUEngineShaderDetails }) {
+    const { device, canvasFormat } = this;
+
+    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
+    Object.entries(shaders).forEach(([name, shader]) => {
+      let pipeline = GPUEngine.initializePipeline(device, shader, canvasFormat)
+      shaderToPipeline.set(name, pipeline);
+    });
+
+    this.shaders = shaderToPipeline;
   }
 
   initializeCanvas(canvas: HTMLCanvasElement) {  
@@ -106,6 +119,7 @@ export default class GPUEngine {
     if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
 
     const { device, shaders, videoTexture } = this;
+    if (!shaders) throw new Error("You have not called `prepareForRender` yet");
 
     this.isProcessingOperation = true;
   
@@ -118,15 +132,18 @@ export default class GPUEngine {
 
     // compute average colors
     computePass.setPipeline(shaders.get("convolution") as GPUComputePipeline);
+
+    (shaders.get("convolution") as GPUComputePipeline).getBindGroupLayout(0)
     // computePass.setPipeline(shaders.get("videoMapper") as GPUComputePipeline);
     
-    console.log(this.bindGroups.keys());
-    console.log(this.bindGroups.keys.length);
+    // console.log(this.bindGroups.keys());
+    // console.table(this.bindGroups);
 
-    Object.entries(this.bindGroups).forEach(([name, bindGroup], index) => {
+    let bindIdx = 0;
+    this.bindGroups.forEach((bindGroup, name) => {
       console.log("something")
       console.log("name: ", name);
-      computePass.setBindGroup(index, bindGroup)
+      computePass.setBindGroup(bindIdx++, bindGroup)
     });
 
     //  /console.log("index: ", index)
@@ -199,12 +216,15 @@ export default class GPUEngine {
     return this.isProcessingOperation;
   }
 
-  private static initializePipeline(device: GPUDevice, shader: GPUEngineShaderDetails, canvasFormat: GPUTextureFormat) { 
+  private static initializePipeline(
+    device: GPUDevice,
+    shader: GPUEngineShaderDetails, canvasFormat: GPUTextureFormat) { 
     const code = typeof shader.source === 'string' ? shader.source : shader.source.default;
     const shaderModule = device.createShaderModule({ code });
 
     if (shader.type === "compute") {
       return device.createComputePipeline({
+        label: 'myCompute',
         layout: 'auto',
         compute: {
           module: shaderModule,
@@ -214,6 +234,7 @@ export default class GPUEngine {
     } else if (shader.type === 'render') {
       return device.createRenderPipeline({
         layout: 'auto',
+        label: 'myRender',
         vertex: {
           module: shaderModule,
           entryPoint: shader.vertexEntryPoint ?? 'vertexMain',
@@ -227,6 +248,93 @@ export default class GPUEngine {
     } else {
       throw new Error("shader.type is not compute or not render");
     }
+  }
+
+  createPipeline(shaders: { [name: string]: GPUEngineShaderDetails }) {
+    const { device, buffers, canvasFormat } = this;
+    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
+    Object.entries(shaders).forEach(([name, details], index) => {
+      const bindGroupTemplate = details.bindGroups;
+      
+      const bindGroupLayout = this.device.createBindGroupLayout({
+        label: `${name} - bind group layout`,
+        entries: bindGroupTemplate.map(({ name, visibility, buffers }, gpuResourceIndex) => {
+          return {
+            binding: gpuResourceIndex,
+            visibility,
+            // TODO(michael): do we need to future proof this?
+            texture: (details.type === 'render' ? {} : undefined),
+            buffer: (details.type === 'compute' ? { type: 'read-only-storage' } : undefined)
+          }
+        })
+      });
+
+      bindGroupTemplate.forEach(({ name: bindGroupName, visibility, buffers: buffersTemplate }) => {
+        const bindGroup = device.createBindGroup({
+          label: bindGroupName,
+          layout: bindGroupLayout,
+          // list of buffers assigned to this bind group
+          entries: buffersTemplate.map((bufferName, bufferIndex) => {
+            const buffer = buffers.get(bufferName)
+
+            if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
+
+            return {
+              binding: bufferIndex,
+              // resource: buffers.get(bufferName)! 
+              resource: buffer instanceof GPUTexture ? buffer.createView() : buffer
+              // resource: { buffers: buffers.get(bufferName)! }
+            };
+          })
+        });
+      });
+
+      const code = typeof details.source === 'string' ? details.source : details.source.default;
+      const shaderModule = device.createShaderModule({ code });
+
+      const shaderPipelineLayout = device.createPipelineLayout({
+        bindGroupLayouts: [bindGroupLayout],
+        label: `${name} - pipeline layout`,
+      });
+
+      if (details.type === 'render') {
+        const renderPipeline = device.createRenderPipeline({
+          layout: shaderPipelineLayout,
+          label: `${name} - pipeline`,
+          vertex: {
+            module: shaderModule,
+            entryPoint: details.vertexEntryPoint ?? 'vertexMain',
+          },
+          fragment: {
+            module: shaderModule,
+            entryPoint: details.fragmentEntryPoint ?? 'fragmentMain',
+            targets: [{ format: canvasFormat }],
+          },
+        });
+        shaderToPipeline.set(name, renderPipeline);
+      } else if (details.type === 'compute') {
+        const computePipeline = device.createComputePipeline({
+          label: 'myCompute',
+          layout: shaderPipelineLayout,
+          compute: {
+            module: shaderModule,
+            entryPoint: details.computeEntryPoint ?? 'computeMain',
+          }
+        });
+        shaderToPipeline.set(name, computePipeline);
+      } else {
+        throw new Error("shader.type is not compute or render");
+      }
+      // // first create the bind group layout
+      // this.device.createBindGroupLayout({
+      //   entries: details.bindGroups
+      // })
+
+      // then create the bind group
+      // then assign the bind group to the layout
+      // then assign the layout to the pipeline
+      // then assign the pipeline to the shader name map
+    });
   }
 
   hasBuffer(name: string) {
@@ -311,7 +419,8 @@ export default class GPUEngine {
       // we were overspecifying this for buffers only... we are now using a GPUTexture
 
       const bindGroup = device.createBindGroup({
-        layout: layout,
+        label: group.name,
+        layout,
         // list of buffers assigned to this bind group
         entries: group.buffers.map((bufferName, bufferIndex) => {
           const buffer = buffers.get(bufferName)

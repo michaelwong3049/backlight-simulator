@@ -179,10 +179,10 @@ export default function BacklightSimulator(props: Props) {
   useEffect(() => {
     (async () => {
       const engine = await GPUEngine.initialize(
-        {
-          convolution: { type: 'compute', source: convolutionShader },
-          videoMapper: { type: 'render', source: backlightShader },
-        },
+        // {
+        //   convolution: { type: 'compute', source: convolutionShader },
+        //   videoMapper: { type: 'render', source: backlightShader },
+        // },
         1920, // im filling in this with my own data, unsure how i can get video for now
         1080,
         GPU_BUFFERS
@@ -261,7 +261,22 @@ export default function BacklightSimulator(props: Props) {
       //   ]
       // ]);
 
-      engine.createBindGroups([
+      // engine.createBindGroups([
+      //   {
+      //     // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
+      //     name: 'settingsBindGroup',
+      //     visibility: GPUShaderStage.COMPUTE,
+      //     buffers: ['settingsBuffer']
+      //   },
+      //   {
+      //     // this bind group holds the buffers of the input data of the video's per frame image data and processing output
+      //     name: 'dataBindGroup',
+      //     visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+      //     buffers: ['videoImageData', 'colorDivisionOutBuffer']
+      //   }
+      // ]);
+
+      const bindGroups = [
         {
           // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
           name: 'settingsBindGroup',
@@ -274,7 +289,23 @@ export default function BacklightSimulator(props: Props) {
           visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
           buffers: ['videoImageData', 'colorDivisionOutBuffer']
         }
-      ]);
+      ];
+
+      engine.createPipeline(
+        {
+          convolution: { 
+            type: 'compute',
+            source: convolutionShader,
+            bindGroups
+          },
+          videoMapper: { 
+            type: 'render',
+            source: backlightShader,
+            bindGroups
+          },
+        },
+
+      )
 
       const startFrameProcessing = async () => {
         const params = new Uint32Array([
