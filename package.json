@@ -48,7 +48,7 @@
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@craco/craco": "^7.1.0",
-    "@webgpu/types": "^0.1.54",
+    "@webgpu/types": "^0.1.66",
     "canvas": "^3.0.0-rc3"
   }
 }

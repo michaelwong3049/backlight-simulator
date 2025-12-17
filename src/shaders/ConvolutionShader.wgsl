@@ -31,12 +31,12 @@ struct Position {
 // const RED_CHANNEL_OFFSET = 0
 // const BLUE_CHANNEL_OFFSET = 1
 // const GREEN_CHANNEL_OFFSET = 2
-// const ALPHA_CHANNEL_OFFSET = 3
 
-@group(0) @binding(0) var<storage, read_write> computeBuffer: array<u32>;
-@group(0) @binding(1) var<storage, read_write> paramBuffer: Params;
+@group(0) @binding(0) var<storage, read_write> settingsBuffer: Params;
+@group(1) @binding(0) var videoImageData: texture_2d<f32>;
+@group(1) @binding(1) var<storage, read_write> colorDivsionOutBuffer: array<u32>;
 // [division1 row, division1 col, division width, division1 height, division1 color, division2 row, division2 col, ...]
-@group(0) @binding(2) var<storage, read_write> divisionBuffer: array<u32>;
+// @group(0) @binding(2) var<storage, read_write> divisionBuffer: array<u32>;
 
 /**
   Demonstration of how workgroup logic:
@@ -76,9 +76,9 @@ fn computeMain(
   @builtin(local_invocation_id) thread_id: vec3<u32>, // [xyz]
 ) {
   // what division is my workgroup responsible for?
-  let division_idx = i32(workgroup_id.x + (paramBuffer.horizontalDivisions * workgroup_id.y));
-  let division_height = ceil(f32(paramBuffer.canvasHeight) / f32(paramBuffer.verticalDivisions));
-  let division_width = ceil(f32(paramBuffer.canvasWidth) / f32(paramBuffer.horizontalDivisions));
+  let division_idx = i32(workgroup_id.x + (settingsBuffer.horizontalDivisions * workgroup_id.y));
+  let division_height = ceil(f32(settingsBuffer.canvasHeight) / f32(settingsBuffer.verticalDivisions));
+  let division_width = ceil(f32(settingsBuffer.canvasWidth) / f32(settingsBuffer.horizontalDivisions));
 
   // at this point we know everything about our division (height, width, idx)
 
@@ -143,12 +143,16 @@ fn computeMain(
         continue;
       }
 
-      let color = computeBuffer[pixel_idx]; // packed u32
-      var split_color: vec4<u32> = unpackRGBA(color);
+      // let color = computeBuffer[pixel_idx]; // packed u32
+      let color = textureLoad(videoImageData, global_id.xy, 0);
+      // var split_color: vec4<u32> = unpackRGBA(color);
 
-      this_thread_color_sum.r += split_color.r;
-      this_thread_color_sum.g += split_color.g;
-      this_thread_color_sum.b += split_color.b;
+      // this_thread_color_sum.r += split_color.r;
+      // this_thread_color_sum.g += split_color.g;
+      // this_thread_color_sum.b += split_color.b;
+      this_thread_color_sum.r += u32(color.r);
+      this_thread_color_sum.b += u32(color.b);
+      this_thread_color_sum.g += u32(color.g);
       this_thread_pixel_count += 1;
     }
   }
@@ -201,7 +205,8 @@ fn computeMain(
   let avg_g = ceil(f32(workgroup_color_sum[0].g) / f32(workgroup_pixel_count[0]));
   let avg_b = ceil(f32(workgroup_color_sum[0].b) / f32(workgroup_pixel_count[0]));
   var color_array = vec4<u32>(u32(avg_r), u32(avg_g), u32(avg_b), 255);
-  divisionBuffer[division_idx] = u32(repackRBGA(color_array));
+  // divisionBuffer[division_idx] = u32(repackRBGA(color_array));
+  colorDivsionOutBuffer[division_idx] = u32(repackRBGA(color_array));
 
   // divisionBuffer[(division_idx * 5)] = u32(startRow);
   // divisionBuffer[(division_idx * 5) + 1] = u32(startCol);

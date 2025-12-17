@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
 import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
 import backlightShader from '@/shaders/backlight.wgsl';
+import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
@@ -9,14 +10,19 @@ const NUM_ELEMENTS = 5324000; // TODO(andymina): where did this number come from
 const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
 const WORKGROUP_SIZE = 64;
 
+// TODO(michaelwong): figure out how to parameterize the render pass descriptor
+
 const GPU_BUFFERS: Array<GPUEngineBuffer> = [
+  // im unsure if this frameDataBuffer should be here sine we arent using a buffer for sending video imagedata anymore... we are using a texture
+  // {
+  //   name: 'frameDataBuffer', // this buffer is for the video's pixel color image data
+  //   sizeInBytes: BUFFER_SIZE_IN_BYTES,
+  //   // sizeInBytes: BUFFER_SIZE_IN_BYTES,
+  //   // usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+  //   usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
+  // },
   {
-    name: 'frameDataBuffer',
-    sizeInBytes: BUFFER_SIZE_IN_BYTES,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-  },
-  {
-    name: 'settingsBuffer',
+    name: 'settingsBuffer', // TODO: this buffer is for ...
     // TODO(michaelwong): fix to match the size in bytes of params
     sizeInBytes: 24, 
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
@@ -41,7 +47,7 @@ export default function BacklightSimulator(props: Props) {
     async (
       video: HTMLVideoElement,
       canvas: HTMLCanvasElement,
-      ctx: CanvasRenderingContext2D,
+      ctx: GPUCanvasContext,
       horizontalDivisions: number,
       verticalDivisions: number
     ) => {
@@ -56,8 +62,8 @@ export default function BacklightSimulator(props: Props) {
       // const texture = engine.device?.importExternalTexture({ source: })
 
       // ctx.clearRect(0, 0, width, height);
-      // TODO: if we're only calculating divisions, we may not need to draw the whole image...
-      // TODO: we could even potentially use an offscreen canvas to save on render times
+      // if we're only calculating divisions, we may not need to draw the whole image...
+      // we could even potentially use an offscreen canvas to save on render times
       // ctx.drawImage(
       //   video,
       //   0,
@@ -69,47 +75,67 @@ export default function BacklightSimulator(props: Props) {
       //   width,
       //   height
       // );
-
-      const frame = ctx.getImageData(0, 0, width, height);
+      
       try {
-        const tick = Date.now();
-
-        const packedFrameData = new Uint32Array(frame.data.buffer);
-        await engine.writeBuffer('computeBuffer', packedFrameData);
-
         const shaderTick = Date.now();
-        await engine.execute([horizontalDivisions, verticalDivisions, 1]);
-        // 64 threads per workgroup * 64 workgroups * 720 * 640
+        await engine.execute(video, ctx, [horizontalDivisions, verticalDivisions, 1]);
+
+        // NOTE: maybe we can use beginRenderPass(...) to draw to the canvas (we might save time instead of having to map result to new frame)
+
+        // link the GPU's texture to the canvas context
+
         const shaderTock = Date.now();
-        console.log(`Spent ${shaderTock - shaderTick}ms on the GPU shader`)
 
-        const data = await engine.readBuffer('computeBuffer');
-        const params = await engine.readBuffer("paramBuffer");
-        const divisionBuffer = await engine.readBuffer('divisionBuffer');
+        // const data = await engine.readBuffer("colorDivisionOutBuffer");
+        // console.log(new Uint8Array(data))
 
-        // console.log(new Uint8Array(divisionBuffer));
+        video.requestVideoFrameCallback(() =>
+          handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
+        );
+      } catch (error) {
+        console.error("something went wrong here...", error)
+      }
 
-        const tock = Date.now();
-        console.log(`GPU operations took ${tock - tick}ms`);
-
-        const divisionData = new Uint32Array(divisionBuffer);
-
-        console.log(divisionData);
-        const fourth = divisionData[4];
-        const fourthRed = fourth & 255;
-        const fourthGreen = (fourth >> 8) & 255;
-        const fourthBlue = (fourth >> 16) & 255;
-        const fourthAlpha = (fourth >> 24) & 255;
-
-        const newArray = new Uint8ClampedArray(frame.data.length);
-
-        for (let i = 0; i < frame.data.length; i += 4) {
-          newArray[i] = fourthRed;
-          newArray[i + 1] = fourthBlue;
-          newArray[i + 2] = fourthGreen;
-          newArray[i + 3] = fourthAlpha;
-        }
-
+      // const frame = ctx.getImageData(0, 0, width, height);
+      // try {
+      //   const tick = Date.now();
+      
+      //   const packedFrameData = new Uint32Array(frame.data.buffer);
+      //   await engine.writeBuffer('computeBuffer', packedFrameData);
+      
+      //   const shaderTick = Date.now();
+      //   await engine.execute([horizontalDivisions, verticalDivisions, 1]);
+      //   // 64 threads per workgroup * 64 workgroups * 720 * 640
+      //   const shaderTock = Date.now();
+      //   console.log(`Spent ${shaderTock - shaderTick}ms on the GPU shader`)
+      
+      //   const data = await engine.readBuffer('computeBuffer');
+      //   const params = await engine.readBuffer("paramBuffer");
+      //   const divisionBuffer = await engine.readBuffer('divisionBuffer');
+      
+      //   // console.log(new Uint8Array(divisionBuffer));
+      
+      //   const tock = Date.now();
+      //   console.log(`GPU operations took ${tock - tick}ms`);
+      
+      //   const divisionData = new Uint32Array(divisionBuffer);
+      
+      //   console.log(divisionData);
+      //   const fourth = divisionData[4];
+      //   const fourthRed = fourth & 255;
+      //   const fourthGreen = (fourth >> 8) & 255;
+      //   const fourthBlue = (fourth >> 16) & 255;
+      //   const fourthAlpha = (fourth >> 24) & 255;
+      
+      //   const newArray = new Uint8ClampedArray(frame.data.length);
+      
+      //   for (let i = 0; i < frame.data.length; i += 4) {
+      //     newArray[i] = fourthRed;
+      //     newArray[i + 1] = fourthBlue;
+      //     newArray[i + 2] = fourthGreen;
+      //     newArray[i + 3] = fourthAlpha;
+      //   }
+      
         // for (let i = 0; i < newArray.length; i += 5) {
         //   const row = divisionData[i]
         //   const col = divisionData[i + 1]
@@ -134,32 +160,38 @@ export default function BacklightSimulator(props: Props) {
         //     }
         //   }
         // }
-    
-        const newFrame = new ImageData(newArray, width, height)
-        
+      
+        // const newFrame = new ImageData(newArray, width, height)
+      
         // frame.data.set(newFrame);
-        ctx.putImageData(newFrame, 0, 0);
-
+        // ctx.putImageData(newFrame, 0, 0);
+      
         video.requestVideoFrameCallback(() =>
           handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
-      } catch (err) {
-        console.error('GPU Error: ', err);
-      }
+      // } catch (err) {
+      //   console.error('GPU Error: ', err);
+      // }
     },
     [height, width]
   );
 
   useEffect(() => {
     (async () => {
-      const engine = await GPUEngine.initialize({
-        convolution: { type: 'compute', source: backlightShader },
-        videoMapper: { type: 'render', source: backlightShader },
-      });
+      const engine = await GPUEngine.initialize(
+        {
+          convolution: { type: 'compute', source: convolutionShader },
+          videoMapper: { type: 'render', source: backlightShader },
+        },
+        1920, // im filling in this with my own data, unsure how i can get video for now
+        1080,
+        GPU_BUFFERS
+      );
       engineRef.current = engine;
 
       // TODO(michaelwong): Initialize my known buffers
-      engine.createBuffers(GPU_BUFFERS)
+      // engine.createBuffers(GPU_BUFFERS)
+
       setIsGPUReady(true);
     })();
 
@@ -167,18 +199,18 @@ export default function BacklightSimulator(props: Props) {
     //   const engine = await GPUEngine.initialize();
     //   engineRef.current = engine;
     //   setIsGPUReady(true);
-      // const engine = new GPUEngine(
-      //   { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
-      // );
+    //   const engine = new GPUEngine(
+    //     { source: convolutionShader, type: 'compute', computeEntryPoint: 'computeMain' }
+    //   );
 
-      // const engine = new GPUEngine({ 
-      //   source: backlightShader, 
-      //   type: 'render', 
-      //   vertexEntryPoint: 'vertexMain', 
-      //   fragmentEntryPoint: 'fragmentMain'
-      // });
+    //   const engine = new GPUEngine({ 
+    //     source: backlightShader, 
+    //     type: 'render', 
+    //     vertexEntryPoint: 'vertexMain', 
+    //     fragmentEntryPoint: 'fragmentMain'
+    //   });
 
-      // await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
+    //   await engine.initialize(GPU_BUFFERS, [['computeBuffer', 'paramBuffer']]);
     // };
 
     // initGPU();
@@ -196,10 +228,16 @@ export default function BacklightSimulator(props: Props) {
       const engine = engineRef.current;
       if (!video || !canvas || !isGPUReady || !engine) return;
 
+      const ctx = canvas.getContext('webgpu'); // TODO: maybe we can use willReadFrequently
+      if (!ctx) return;
+
+      // TODO: make it so that we call this only when video dimensions change (do they even change?)
+      engine.updateTexture(1920, 1080);
+
       // Initialize the canvas for speedy GPU rendering
       engine.initializeCanvas(canvas);
 
-      // Initialize my runime buffers
+      // Initialize my runtime buffers
       if (!engine.hasBuffer('colorDivisionOutBuffer')) {
         engine.destroyBuffer('colorDivisionOutBuffer');
       }
@@ -212,7 +250,7 @@ export default function BacklightSimulator(props: Props) {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
       }]);
 
-      // // Assign bind groups to my buffers
+      // Assign bind groups to my buffers
       // engine.createBindGroups([
       //   [  // group 0
       //     { name: 'settingsBuffer', visibility: GPUShaderStage.COMPUTE }
@@ -225,17 +263,19 @@ export default function BacklightSimulator(props: Props) {
 
       engine.createBindGroups([
         {
+          // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
           name: 'settingsBindGroup',
           visibility: GPUShaderStage.COMPUTE,
-          buffers: ['settingsBuffers']
+          buffers: ['settingsBuffer']
         },
         {
+          // this bind group holds the buffers of the input data of the video's per frame image data and processing output
           name: 'dataBindGroup',
           visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-          buffers: ['frameDataBuffer', 'colorDivisionOutBuffer']
+          buffers: ['videoImageData', 'colorDivisionOutBuffer']
         }
-      ])
-      
+      ]);
+
       const startFrameProcessing = async () => {
         const params = new Uint32Array([
           horizontalDivisions,
@@ -245,20 +285,20 @@ export default function BacklightSimulator(props: Props) {
           canvas.width,
           canvas.height
         ]);
-        await engine.writeBuffer('paramBuffer', params);
+        await engine.writeBuffer('settingsBuffer', params);
 
         video.requestVideoFrameCallback(() =>
           handleFrame(
             video,
             canvas,
-            ctx,
+            ctx, //  - not needed? sending video frame data directly via texture 
             horizontalDivisions,
             verticalDivisions
           )
         );
       };
       video.addEventListener('play', startFrameProcessing);
-      
+
       const handleResize = () => {
         canvas.width = width;
         canvas.height = height;
