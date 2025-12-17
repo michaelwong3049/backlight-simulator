@@ -256,44 +256,64 @@ export default class GPUEngine {
     Object.entries(shaders).forEach(([name, details], index) => {
       const bindGroupTemplate = details.bindGroups;
       
-      const bindGroupLayout = this.device.createBindGroupLayout({
-        label: `${name} - bind group layout`,
-        entries: bindGroupTemplate.map(({ name, visibility, buffers }, gpuResourceIndex) => {
-          return {
-            binding: gpuResourceIndex,
-            visibility,
-            // TODO(michael): do we need to future proof this?
-            texture: (details.type === 'render' ? {} : undefined),
-            buffer: (details.type === 'compute' ? { type: 'read-only-storage' } : undefined)
-          }
-        })
-      });
+      // Create a bind group layout for each bind group
+      const bindGroupLayouts: GPUBindGroupLayout[] = [];
+      bindGroupTemplate.forEach(({ name: bindGroupName, visibility, buffers: buffersTemplate }, groupIndex) => {
+        const layoutEntries: GPUBindGroupLayoutEntry[] = buffersTemplate.map((bufferName, bufferIndex) => {
+          const buffer = buffers.get(bufferName);
+          if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
 
-      bindGroupTemplate.forEach(({ name: bindGroupName, visibility, buffers: buffersTemplate }) => {
+          const entry: GPUBindGroupLayoutEntry = {
+            binding: bufferIndex,
+            visibility,
+          };
+
+          if (buffer instanceof GPUTexture) {
+            entry.texture = {};
+          } else {
+            // For compute shaders, use read-write storage; for render, use read-only storage
+            entry.buffer = { 
+              type: details.type === 'compute' ? 'storage' : 'read-only-storage' 
+            };
+          }
+
+          return entry;
+        });
+
+        const bindGroupLayout = device.createBindGroupLayout({
+          label: `${name} - bind group ${groupIndex} layout`,
+          entries: layoutEntries,
+        });
+
+        bindGroupLayouts.push(bindGroupLayout);
+
+        // Create the bind group using its specific layout
         const bindGroup = device.createBindGroup({
           label: bindGroupName,
           layout: bindGroupLayout,
-          // list of buffers assigned to this bind group
           entries: buffersTemplate.map((bufferName, bufferIndex) => {
-            const buffer = buffers.get(bufferName)
-
+            const buffer = buffers.get(bufferName);
             if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
 
             return {
               binding: bufferIndex,
-              // resource: buffers.get(bufferName)! 
-              resource: buffer instanceof GPUTexture ? buffer.createView() : buffer
-              // resource: { buffers: buffers.get(bufferName)! }
+              resource: buffer instanceof GPUTexture 
+                ? buffer.createView() 
+                : { buffer: buffer as GPUBuffer }
             };
           })
         });
+
+        // Store the bind group so it can be used later
+        this.bindGroups.set(bindGroupName, bindGroup);
       });
 
       const code = typeof details.source === 'string' ? details.source : details.source.default;
       const shaderModule = device.createShaderModule({ code });
 
+      // Create pipeline layout with all bind group layouts
       const shaderPipelineLayout = device.createPipelineLayout({
-        bindGroupLayouts: [bindGroupLayout],
+        bindGroupLayouts: bindGroupLayouts,
         label: `${name} - pipeline layout`,
       });
 
@@ -325,16 +345,9 @@ export default class GPUEngine {
       } else {
         throw new Error("shader.type is not compute or render");
       }
-      // // first create the bind group layout
-      // this.device.createBindGroupLayout({
-      //   entries: details.bindGroups
-      // })
-
-      // then create the bind group
-      // then assign the bind group to the layout
-      // then assign the layout to the pipeline
-      // then assign the pipeline to the shader name map
     });
+
+    this.shaders = shaderToPipeline;
   }
 
   hasBuffer(name: string) {
@@ -429,9 +442,9 @@ export default class GPUEngine {
 
           return {
             binding: bufferIndex,
-            // resource: buffers.get(bufferName)! 
-            resource: buffer instanceof GPUTexture ? buffer.createView() : buffer
-            // resource: { buffers: buffers.get(bufferName)! }
+            resource: buffer instanceof GPUTexture 
+              ? buffer.createView() 
+              : { buffer: buffer as GPUBuffer }
           };
         })
       });

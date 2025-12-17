@@ -286,7 +286,7 @@ export default function BacklightSimulator(props: Props) {
         {
           // this bind group holds the buffers of the input data of the video's per frame image data and processing output
           name: 'dataBindGroup',
-          visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+          visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
           buffers: ['videoImageData', 'colorDivisionOutBuffer']
         }
       ];
