@@ -23,9 +23,11 @@ const GPU_BUFFERS: Array<GPUEngineBuffer> = [
   // },
   {
     name: 'settingsBuffer', // TODO: this buffer is for ...
+    label: "settingsBuffer - label",
     // TODO(michaelwong): fix to match the size in bytes of params
     sizeInBytes: 24, 
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+    // usage: GPUBufferUsage.STORAGE
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
   }
 ]
 
@@ -61,6 +63,8 @@ export default function BacklightSimulator(props: Props) {
       // put video into texture 
       // const texture = engine.device?.importExternalTexture({ source: })
 
+      console.log(canvas.width, canvas.height);
+
       // ctx.clearRect(0, 0, width, height);
       // if we're only calculating divisions, we may not need to draw the whole image...
       // we could even potentially use an offscreen canvas to save on render times
@@ -83,14 +87,10 @@ export default function BacklightSimulator(props: Props) {
         // NOTE: maybe we can use beginRenderPass(...) to draw to the canvas (we might save time instead of having to map result to new frame)
 
         // link the GPU's texture to the canvas context
-
         const shaderTock = Date.now();
 
-        // const data = await engine.readBuffer("colorDivisionOutBuffer");
-        // console.log(new Uint8Array(data))
-
-        video.requestVideoFrameCallback(() =>
-          handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
+          video.requestVideoFrameCallback(() =>
+            handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
         );
       } catch (error) {
         console.error("something went wrong here...", error)
@@ -166,9 +166,9 @@ export default function BacklightSimulator(props: Props) {
         // frame.data.set(newFrame);
         // ctx.putImageData(newFrame, 0, 0);
       
-        video.requestVideoFrameCallback(() =>
-          handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
-        );
+      //   video.requestVideoFrameCallback(() =>
+      //     handleFrame(video, canvas, ctx, horizontalDivisions, verticalDivisions)
+      //   );
       // } catch (err) {
       //   console.error('GPU Error: ', err);
       // }
@@ -232,7 +232,7 @@ export default function BacklightSimulator(props: Props) {
       if (!ctx) return;
 
       // TODO: make it so that we call this only when video dimensions change (do they even change?)
-      engine.updateTexture(1920, 1080);
+      // engine.updateTexture(1920, 1080);
 
       // Initialize the canvas for speedy GPU rendering
       engine.initializeCanvas(canvas);
@@ -243,6 +243,7 @@ export default function BacklightSimulator(props: Props) {
       }
       engine.createBuffers([{
         name: 'colorDivisionOutBuffer',
+        label: 'colorDivisionOutBuffer - label',
         // each division has 5 numbers, each 4 bytes
         // we have horiztonal * vertical divisions.
         sizeInBytes: horizontalDivisions * verticalDivisions * 5 * 4, // 180
@@ -276,35 +277,66 @@ export default function BacklightSimulator(props: Props) {
       //   }
       // ]);
 
-      const bindGroups = [
+      const computeBindGroups = [
         {
           // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
           name: 'settingsBindGroup',
+          // visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
           visibility: GPUShaderStage.COMPUTE,
-          buffers: ['settingsBuffer']
+          buffers: ['settingsBuffer', 'colorDivisionOutBuffer']
         },
+        // TODO: i think this is wrong since we are creating bind group and bind group
+        // layout for both of these for compute but i dont think this is rigth way maybe
         {
           // this bind group holds the buffers of the input data of the video's per frame image data and processing output
           name: 'dataBindGroup',
-          visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-          buffers: ['videoImageData', 'colorDivisionOutBuffer']
+          // visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+          visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+          buffers: ['videoInputTexture', 'videoOutputTexture']
         }
-      ];
+      ]
+
+      const textureBindGroups = [
+        {
+          // this bind group holds the buffers of the input data of the video's per frame image data and processing output
+          name: 'textureDataBindGroup',
+          visibility: GPUShaderStage.FRAGMENT,
+          // visibility: GPUShaderStage.COMPUTE,
+          // buffers: ['videoInputTexture', 'videoOutputTexture']
+          buffers: ['videoOutputTexture'] // i dont think we need the videoInputTexture here since all we need is to output/draw to canvasjj
+        }
+      ]
+
+      // const bindGroups = [
+      //   {
+      //     // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
+      //     name: 'settingsBindGroup',
+      //     // visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+      //     visibility: GPUShaderStage.COMPUTE,
+      //     buffers: ['settingsBuffer', 'colorDivisionOutBuffer']
+      //   },
+      //   {
+      //     // this bind group holds the buffers of the input data of the video's per frame image data and processing output
+      //     name: 'dataBindGroup',
+      //     // visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+      //     visibility: GPUShaderStage.COMPUTE,
+      //     buffers: ['videoInputTexture']
+      //   }
+      // ];
 
       engine.createPipeline(
         {
           convolution: { 
-            type: 'compute',
             source: convolutionShader,
-            bindGroups
+            type: 'compute',
+            bindGroups: computeBindGroups
           },
           videoMapper: { 
+            source: convolutionShader,
             type: 'render',
-            source: backlightShader,
-            bindGroups
+            bindGroups: textureBindGroups
           },
         },
-
       )
 
       const startFrameProcessing = async () => {
@@ -340,7 +372,7 @@ export default function BacklightSimulator(props: Props) {
       return () => {
         video.removeEventListener('play', startFrameProcessing);
         window.removeEventListener('resize', handleResize);
-        engine.cleanup();
+        // engine.cleanup();
       };
     },
     [handleFrame, height, width, horizontalDivisions, verticalDivisions, isGPUReady]

@@ -32,9 +32,46 @@ struct Position {
 // const BLUE_CHANNEL_OFFSET = 1
 // const GREEN_CHANNEL_OFFSET = 2
 
-@group(0) @binding(0) var<storage, read_write> settingsBuffer: Params;
-@group(1) @binding(0) var videoImageData: texture_2d<f32>;
-@group(1) @binding(1) var<storage, read_write> colorDivsionOutBuffer: array<u32>;
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f
+}
+
+@vertex fn vertexMain(
+  @builtin(vertex_index) vertexIndex : u32
+) -> VertexOutput {
+    var output: VertexOutput;
+
+    let pos = array(
+      vec2f( -1.0,  -1.0 ),  // top center
+      vec2f( 3.0, -1.0 ),  // bottom left
+      vec2f( -1.0, 3.0 )   // bottom right
+    );
+
+    let uv = array(
+      vec2f(0.0, 1.0),   // Bottom-left of texture
+      vec2f(2.0, 1.0),   // Off the texture (gets clamped)
+      vec2f(0.0, -1.0)   // Off the texture (gets clamped)
+    );
+
+    output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
+    output.uv = uv[vertexIndex];
+
+    return output;
+  }
+
+@group(0) @binding(0) var outputTexture: texture_2d<f32>;
+
+@fragment fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  // Convert UV (0.0-1.0) to pixel coordinates
+  let dimensions = textureDimensions(outputTexture);
+  let pixelCoord = vec2<i32>(i32(input.uv.x * f32(dimensions.x)), i32(input.uv.y * f32(dimensions.y)));
+  
+  // Load exact pixel (no filtering)
+  return textureLoad(outputTexture, pixelCoord, 0);
+  // return vec4f(1.0, 0.0, 0.0, 1.0);
+}
+
 // [division1 row, division1 col, division width, division1 height, division1 color, division2 row, division2 col, ...]
 // @group(0) @binding(2) var<storage, read_write> divisionBuffer: array<u32>;
 
@@ -64,8 +101,13 @@ struct Position {
 // computeMain(workgroup = [0, 1, 0])
 // computeMain(workgroup = [0, 2, 0])
 
+@group(0) @binding(0) var<storage, read_write> settingsBuffer: Params;
+@group(0) @binding(1) var<storage, read_write> colorDivisionOutBuffer: array<u32>;
+@group(1) @binding(0) var videoImageData: texture_2d<f32>;
+@group(1) @binding(1) var videoOutputTexture: texture_storage_2d<rgba8unorm, write>;
+
 // recall: the workergroups that we are using here are like a 3d array of threads, where each row would be the workergroup and each column would be the thread 
-@compute @workgroup_size(16,16,1)
+@compute @workgroup_size(16, 16, 1)
 fn computeMain(
   // --- all these id's are used for the position of the current thread that you are working with --- 
   // global position for a thread across the entire dispatch
@@ -133,26 +175,36 @@ fn computeMain(
 
     if i was thread #1 i would 1, 4, 7, 10
   */
+
   for (var row = thread_id.y; row < u32(division_height); row += num_threads) {
     for (var col = thread_id.x; col < u32(division_width); col += num_threads) {
       // im concerned with this row += num_threads...
       // we are passing frame.data (uint8clamped) to the computeBuffer here and we are not packing this as Uint32? might be errors
-      let pixel_idx = i32(row * u32(division_width) + col);
-
-      if (pixel_idx >= endRow) {
+      let texture_x = i32(startCol + i32(col));
+      let texture_y = i32(startRow + i32(row));
+      
+      // Check bounds
+      if (texture_y >= endRow || texture_x >= endCol) {
         continue;
       }
 
+      // let pixel_idx = i32(row * u32(division_width) + col);
+      // if (pixel_idx >= endRow) {
+      //   continue;
+      // }
+
       // let color = computeBuffer[pixel_idx]; // packed u32
-      let color = textureLoad(videoImageData, global_id.xy, 0);
+      // let color = textureLoad(videoImageData, global_id.xy, 0);
+      let color = textureLoad(videoImageData, vec2<i32>(texture_x, texture_y), 0);
+
       // var split_color: vec4<u32> = unpackRGBA(color);
 
       // this_thread_color_sum.r += split_color.r;
       // this_thread_color_sum.g += split_color.g;
       // this_thread_color_sum.b += split_color.b;
-      this_thread_color_sum.r += u32(color.r);
-      this_thread_color_sum.b += u32(color.b);
-      this_thread_color_sum.g += u32(color.g);
+      this_thread_color_sum.r += u32(color.r * 255.0);
+      this_thread_color_sum.b += u32(color.b * 255.0);
+      this_thread_color_sum.g += u32(color.g * 255.0);
       this_thread_pixel_count += 1;
     }
   }
@@ -204,9 +256,24 @@ fn computeMain(
   let avg_r = ceil(f32(workgroup_color_sum[0].r) / f32(workgroup_pixel_count[0]));
   let avg_g = ceil(f32(workgroup_color_sum[0].g) / f32(workgroup_pixel_count[0]));
   let avg_b = ceil(f32(workgroup_color_sum[0].b) / f32(workgroup_pixel_count[0]));
-  var color_array = vec4<u32>(u32(avg_r), u32(avg_g), u32(avg_b), 255);
+  var color_array = vec4<f32>(f32(avg_r) / 255.0, f32(avg_g) / 255.0, f32(avg_b) / 255.0, 255);
   // divisionBuffer[division_idx] = u32(repackRBGA(color_array));
-  colorDivsionOutBuffer[division_idx] = u32(repackRBGA(color_array));
+
+  // we have to store every pixel for each division in this new texture right?
+  for (var row = thread_id.y; row < u32(division_height); row += 1) {
+    for (var col = thread_id.x; col < u32(division_width); col += 1) {
+      let texture_x = i32(startCol + i32(col));
+      let texture_y = i32(startRow + i32(row));
+      
+      // Check bounds
+      if (texture_y >= endRow || texture_x >= endCol) {
+        continue;
+      }
+
+      textureStore(videoOutputTexture, vec2<i32>(texture_x, texture_y), color_array);
+    }
+  }
+  // colorDivisionOutBuffer[division_idx] = u32(repackRBGA(color_array));
 
   // divisionBuffer[(division_idx * 5)] = u32(startRow);
   // divisionBuffer[(division_idx * 5) + 1] = u32(startCol);
@@ -255,6 +322,7 @@ fn repackRBGA(color_array: vec4<u32>) -> u32 {
 
   return color;
 }
+
   
   // const newFrame: array<u32>; // maybe should set size? for now its dynamic
   // let videoDimensions = Dimensions(i32(paramBuffer.videoWidth), i32(paramBuffer.videoHeight));

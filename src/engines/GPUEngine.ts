@@ -3,6 +3,7 @@ import { ShaderSource } from '@/types/webGPU';
 export interface GPUEngineBuffer {
   name: string;
   sizeInBytes: number;
+  label: string;
   usage: number; // one of GPUBufferUsage, use bitwise-or for multiple use cases
   data?: Array<number>;
 }
@@ -22,7 +23,8 @@ export default class GPUEngine {
 
   shaders?: Map<string, GPUComputePipeline | GPURenderPipeline>;
 
-  videoTexture: GPUTexture;
+  videoInputTexture: GPUTexture;
+  videoOutputTexture: GPUTexture;
 
   // pipeline?: GPUComputePipeline | GPURenderPipeline | null;
   canvas?: HTMLCanvasElement;
@@ -39,13 +41,15 @@ export default class GPUEngine {
     device: GPUDevice, 
     canvasFormat: GPUTextureFormat, 
     // shaderToPipeline: Map<string, GPUComputePipeline | GPURenderPipeline>, 
-    videoTexture: GPUTexture, 
+    videoInputTexture: GPUTexture, 
+    videoOutputTexture: GPUTexture,
     buffers: Map<string, GPUBuffer | GPUTexture>
   ) {
       this.device = device;
       this.canvasFormat = canvasFormat;
       // this.shaders = shaderToPipeline;
-      this.videoTexture = videoTexture;
+      this.videoInputTexture = videoInputTexture;
+      this.videoOutputTexture = videoOutputTexture;
       this.buffers = buffers;
   }
 
@@ -71,20 +75,30 @@ export default class GPUEngine {
 
     // TODO: currently going to add this texture to the buffers map, this is likely NOT best practitce, but i wanna get stuff working
 
-    const texture = device.createTexture({
-      label: "videoImageData",
+    const videoInputTexture = device.createTexture({
+      label: "videoInputTexture",
       format: preferredCanvasFormat,
       size: [videoWidth, videoHeight],
       // usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST // | GPUTextureUsage.RENDER_ATTACHMENT // | GPUTextureUsage.STORAGE_BINDING
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
     })
 
-    GPU_BUFFERS.forEach(({ name, sizeInBytes: size, usage }) => {
-      buffers.set(name, device.createBuffer({ size, usage }))
+    const videoOutputTexture = device.createTexture({
+      label: "videoOutputTexture",
+      // format: preferredCanvasFormat,
+      format: 'rgba8unorm',
+      size: [1089, 848],
+      // usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST // | GPUTextureUsage.RENDER_ATTACHMENT // | GPUTextureUsage.STORAGE_BINDING
+      usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
     })
-    buffers.set(texture.label, texture); // TODO: fix here?!?!??!!
 
-    return new GPUEngine(device, preferredCanvasFormat, texture, buffers);
+    GPU_BUFFERS.forEach(({ name, label, sizeInBytes: size, usage }) => {
+      buffers.set(name, device.createBuffer({ size, usage, label }))
+    })
+    buffers.set(videoInputTexture.label, videoInputTexture); // TODO: fix here?!?!??!!
+    buffers.set(videoOutputTexture.label, videoOutputTexture); // TODO: fix here?!?!??!!
+
+    return new GPUEngine(device, preferredCanvasFormat, videoInputTexture, videoOutputTexture, buffers);
   }
 
   prepareForRender(shaders: { [name: string]: GPUEngineShaderDetails }) {
@@ -118,7 +132,7 @@ export default class GPUEngine {
   async execute(video: HTMLVideoElement, ctx: GPUCanvasContext, workgroupCount: [number, number, number]) {
     if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
 
-    const { device, shaders, videoTexture } = this;
+    const { device, shaders, videoInputTexture } = this;
     if (!shaders) throw new Error("You have not called `prepareForRender` yet");
 
     this.isProcessingOperation = true;
@@ -139,14 +153,16 @@ export default class GPUEngine {
     // console.log(this.bindGroups.keys());
     // console.table(this.bindGroups);
 
-    let bindIdx = 0;
-    this.bindGroups.forEach((bindGroup, name) => {
-      console.log("something")
-      console.log("name: ", name);
-      computePass.setBindGroup(bindIdx++, bindGroup)
-    });
+    // TODO: maybe we can dynamically do this but im gonna hard code this right now
+    computePass.setBindGroup(0, this.bindGroups.get("settingsBindGroup"))
+    computePass.setBindGroup(1, this.bindGroups.get("dataBindGroup"))
 
-    //  /console.log("index: ", index)
+    // let bindIdx = 0;
+    // this.bindGroups.forEach((bindGroup, name) => {
+    //   computePass.setBindGroup(bindIdx++, bindGroup)
+    // });
+
+    //  console.log("index: ", index)
     //   computePass.setBindGroup(index, bindGroup)
     // });
 
@@ -155,6 +171,23 @@ export default class GPUEngine {
     computePass.end();
 
     device.queue.submit([commandEncoder.finish()]);
+    await device.queue.onSubmittedWorkDone();
+
+    const renderEncoder = device.createCommandEncoder();
+    const renderPass = renderEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: ctx.getCurrentTexture().createView(),
+        loadOp: 'clear' as GPULoadOp,
+        storeOp:'store' as GPUStoreOp,
+      }]
+    })
+
+    renderPass.setPipeline(shaders.get("videoMapper") as GPURenderPipeline);
+    renderPass.setBindGroup(0, this.bindGroups.get("textureDataBindGroup"));
+    renderPass.draw(3);
+    renderPass.end();
+
+    device.queue.submit([renderEncoder.finish()]);
     await device.queue.onSubmittedWorkDone();
 
     this.isProcessingOperation = false;
@@ -255,12 +288,19 @@ export default class GPUEngine {
     const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
     Object.entries(shaders).forEach(([name, details], index) => {
       const bindGroupTemplate = details.bindGroups;
-      
       // Create a bind group layout for each bind group
       const bindGroupLayouts: GPUBindGroupLayout[] = [];
+
+      // TODO: change buffers: buffersTemplate to like resources: resourcesTemplate or something
       bindGroupTemplate.forEach(({ name: bindGroupName, visibility, buffers: buffersTemplate }, groupIndex) => {
+        // console.log("-- bindGroupTemplate --", name);
+
         const layoutEntries: GPUBindGroupLayoutEntry[] = buffersTemplate.map((bufferName, bufferIndex) => {
+          // console.log("bufferName: ", bufferName);
           const buffer = buffers.get(bufferName);
+
+          console.log(this.buffers);
+
           if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
 
           const entry: GPUBindGroupLayoutEntry = {
@@ -268,22 +308,47 @@ export default class GPUEngine {
             visibility,
           };
 
-          if (buffer instanceof GPUTexture) {
-            entry.texture = {};
-          } else {
-            // For compute shaders, use read-write storage; for render, use read-only storage
-            entry.buffer = { 
-              type: details.type === 'compute' ? 'storage' : 'read-only-storage' 
-            };
+          if (details.type === 'render') {
+            if (buffer instanceof GPUTexture) {
+              entry.texture = {}
+            } else {
+              entry.buffer = {
+                type: 'read-only-storage'
+              }
+            }
+          }
+
+          if (details.type === 'compute') {
+            console.log("details.type == compute");
+            if (buffer instanceof GPUTexture) {
+              if (bufferName === 'videoInputTexture') {
+                entry.texture = {}
+              } 
+              else {
+                entry.storageTexture = {
+                  access: "write-only",
+                  format: "rgba8unorm"
+                  // format: buffer.format
+                }
+              }
+            }
+            else if (buffer instanceof GPUBuffer) {
+              entry.buffer = { 
+                type: details.type === 'compute' ? 'storage' : 'read-only-storage' 
+              };
+            }
           }
 
           return entry;
         });
 
         const bindGroupLayout = device.createBindGroupLayout({
-          label: `${name} - bind group ${groupIndex} layout`,
+          // label: `Bind group: ${name} - Index: ${groupIndex} layout`,
+          label: `${name}`,
           entries: layoutEntries,
         });
+        
+        // console.log("bindGroupLayout created: ", name, "- bind group", groupIndex, " layout")
 
         bindGroupLayouts.push(bindGroupLayout);
 
@@ -312,27 +377,32 @@ export default class GPUEngine {
       const shaderModule = device.createShaderModule({ code });
 
       // Create pipeline layout with all bind group layouts
+      // console.log("bindGroupLayoutNumber: ", bindGroupLayouts.length);
+
       const shaderPipelineLayout = device.createPipelineLayout({
         bindGroupLayouts: bindGroupLayouts,
-        label: `${name} - pipeline layout`,
+        label: `${name}`,
       });
 
       if (details.type === 'render') {
+        // console.log("creating render for: ", name);
+
         const renderPipeline = device.createRenderPipeline({
           layout: shaderPipelineLayout,
           label: `${name} - pipeline`,
           vertex: {
             module: shaderModule,
-            entryPoint: details.vertexEntryPoint ?? 'vertexMain',
+            // entryPoint: details.vertexEntryPoint ?? 'vertexMain',
           },
           fragment: {
             module: shaderModule,
-            entryPoint: details.fragmentEntryPoint ?? 'fragmentMain',
+            // entryPoint: details.fragmentEntryPoint ?? 'fragmentMain',
             targets: [{ format: canvasFormat }],
           },
         });
         shaderToPipeline.set(name, renderPipeline);
       } else if (details.type === 'compute') {
+        console.log("creating compute for: ", name);
         const computePipeline = device.createComputePipeline({
           label: 'myCompute',
           layout: shaderPipelineLayout,
@@ -359,15 +429,19 @@ export default class GPUEngine {
     const { device } = this;
 
     bufferDescriptions.forEach((desc) => {
-      const { name, sizeInBytes: size, usage, data } = desc;
+      const { name, label, sizeInBytes: size, usage, data } = desc;
+
+      // console.log("label: ", label);
 
       if (this.buffers.has(name)) {
+        return;
         throw new Error(`Failed to create buffer, buffer named "${name}" exists already`);
       }
 
       const buffer = device.createBuffer({
         size,
         usage,
+        label
       });
       this.buffers.set(name, buffer);
     });
@@ -385,7 +459,7 @@ export default class GPUEngine {
       return [{
         binding: groupIndex,
         visibility: group.visibility,
-        buffer: { type: "storage" as GPUBufferBindingType }
+        buffer: { type: "read-only-storage" as GPUBufferBindingType }
       }]
     } else {
       return [
@@ -453,32 +527,30 @@ export default class GPUEngine {
     });
   }
 
-  updateTexture(videoWidth: number, videoHeight: number) {
+  async updateTexture(videoWidth: number, videoHeight: number) {
     const { device, canvasFormat } = this;
 
-    this.videoTexture.destroy();
+    this.videoInputTexture.destroy();
+
+    await device.queue.onSubmittedWorkDone();
 
     const texture = device.createTexture({
-      label: "videoImageData",
+      label: "videoInputTexture",
       format: canvasFormat,
       size: [videoWidth, videoHeight],
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
     });
   
-    this.videoTexture = texture;
+    this.videoInputTexture = texture;
   }
 
   private sendVideoData(video: HTMLVideoElement) {
-    const { device, videoTexture } = this;
-
-    console.log("sending video data...", video.videoWidth, video.videoHeight, " texture: ", videoTexture.height, videoTexture.width);
+    const { device, videoInputTexture } = this;
 
     device.queue.copyExternalImageToTexture(
       { source: video },
-      { texture: videoTexture },
+      { texture: videoInputTexture },
       [video.videoWidth, video.videoHeight]
     )
   }
 }
-
-
