@@ -283,137 +283,137 @@ export default class GPUEngine {
     }
   }
 
-  createPipeline(shaders: { [name: string]: GPUEngineShaderDetails }) {
-    const { device, buffers, canvasFormat } = this;
-    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
-    Object.entries(shaders).forEach(([name, details], index) => {
-      const bindGroupTemplate = details.bindGroups;
-      // Create a bind group layout for each bind group
-      const bindGroupLayouts: GPUBindGroupLayout[] = [];
 
-      // TODO: change buffers: buffersTemplate to like resources: resourcesTemplate or something
-      bindGroupTemplate.forEach(({ name: bindGroupName, visibility, buffers: buffersTemplate }, groupIndex) => {
-        // console.log("-- bindGroupTemplate --", name);
+  private createBindGroupAndLayout(name: string, visibility: number, resourcesTemplate: string[], shaderType: 'compute' | 'render'): { bindGroup: GPUBindGroup, layout: GPUBindGroupLayout} {
+    const { buffers, device } = this;
+    const layoutEntries: GPUBindGroupLayoutEntry[] = resourcesTemplate.map((bufferName, bufferIndex) => {
+      const buffer = buffers.get(bufferName);
+      if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
 
-        const layoutEntries: GPUBindGroupLayoutEntry[] = buffersTemplate.map((bufferName, bufferIndex) => {
-          // console.log("bufferName: ", bufferName);
-          const buffer = buffers.get(bufferName);
+      const entry: GPUBindGroupLayoutEntry = {
+        binding: bufferIndex,
+        visibility,
+      };
 
-          console.log(this.buffers);
+      if (shaderType === 'render') {
+        // TODO(michaelwong): check if {} is required for entry.texture.
+        entry.texture = buffer instanceof GPUTexture ? {} : undefined;
+        entry.buffer = !entry.texture ? { type: 'read-only-storage' } : undefined;
+        return entry;
+      }
 
-          if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
-
-          const entry: GPUBindGroupLayoutEntry = {
-            binding: bufferIndex,
-            visibility,
-          };
-
-          if (details.type === 'render') {
-            if (buffer instanceof GPUTexture) {
-              entry.texture = {}
-            } else {
-              entry.buffer = {
-                type: 'read-only-storage'
-              }
-            }
-          }
-
-          if (details.type === 'compute') {
-            console.log("details.type == compute");
-            if (buffer instanceof GPUTexture) {
-              if (bufferName === 'videoInputTexture') {
-                entry.texture = {}
-              } 
-              else {
-                entry.storageTexture = {
-                  access: "write-only",
-                  format: "rgba8unorm"
-                  // format: buffer.format
-                }
-              }
-            }
-            else if (buffer instanceof GPUBuffer) {
-              entry.buffer = { 
-                type: details.type === 'compute' ? 'storage' : 'read-only-storage' 
-              };
-            }
-          }
+      if (shaderType === 'compute') {
+        if (buffer instanceof GPUTexture) {
+          entry.texture = bufferName === 'videoInputTexture' ? {} : undefined;
+          entry.storageTexture = !entry.texture ?  {
+              access: "write-only",
+              format: "rgba8unorm"
+              // format: buffer.format
+            } : undefined;
 
           return entry;
-        });
+        } else if (buffer instanceof GPUBuffer) {
+          entry.buffer = { 
+            type: shaderType === 'compute' ? 'storage' : 'read-only-storage' 
+          };
+          return entry;
+        }
+      }
 
-        const bindGroupLayout = device.createBindGroupLayout({
-          // label: `Bind group: ${name} - Index: ${groupIndex} layout`,
-          label: `${name}`,
-          entries: layoutEntries,
-        });
-        
-        // console.log("bindGroupLayout created: ", name, "- bind group", groupIndex, " layout")
+      throw new Error("shaderType was not one of 'render' or 'compute'.");
+    });
+    
+    const layout = device.createBindGroupLayout({
+      label: name,
+      entries: layoutEntries,
+    });
 
-        bindGroupLayouts.push(bindGroupLayout);
+    // Create the bind group using its specific layout
+    const bindGroup = device.createBindGroup({
+      label: name,
+      layout,
+      entries: resourcesTemplate.map((resourceName, resourceIndex) => {
+        const buffer = buffers.get(resourceName);
+        if (!buffer) throw new Error(`buffer ${resourceName} does not exist....`);
 
-        // Create the bind group using its specific layout
-        const bindGroup = device.createBindGroup({
-          label: bindGroupName,
-          layout: bindGroupLayout,
-          entries: buffersTemplate.map((bufferName, bufferIndex) => {
-            const buffer = buffers.get(bufferName);
-            if (!buffer) throw new Error(`buffer ${bufferName} does not exist....`);
+        return {
+          binding: resourceIndex,
+          resource: buffer instanceof GPUTexture 
+            ? buffer.createView() 
+            : { buffer: buffer as GPUBuffer }
+        };
+      })
+    });
 
-            return {
-              binding: bufferIndex,
-              resource: buffer instanceof GPUTexture 
-                ? buffer.createView() 
-                : { buffer: buffer as GPUBuffer }
-            };
-          })
-        });
+    return { bindGroup, layout };
+  }
 
-        // Store the bind group so it can be used later
-        this.bindGroups.set(bindGroupName, bindGroup);
-      });
+  private createShaderPipelineLayout(name: string, details: GPUEngineShaderDetails) {
+    const { device } = this;
 
+    // Create all of the bind groups for a single shader
+    const allBindGroupLayoutsForShader: GPUBindGroupLayout[] = []; 
+    
+    // For each bind group defined in the shader, create the bind group layout (to pre-allocate GPU resources)
+    // TODO: change buffers: buffersTemplate to like resources: resourcesTemplate or something (done) ... next step is to change buffers too
+    details.bindGroups.forEach(({ name: bindGroupName, visibility, buffers: resourcesTemplate }, groupIndex) => {
+      // Create actual bind group and its layout according to the templates provided in details.bindGroup
+      const { bindGroup, layout } = this.createBindGroupAndLayout(bindGroupName, visibility, resourcesTemplate, details.type);
+      allBindGroupLayoutsForShader.push(layout);
+
+      // Store the bind group so it can be used later
+      this.bindGroups.set(bindGroupName, bindGroup);
+    });
+
+    return device.createPipelineLayout({
+      bindGroupLayouts: allBindGroupLayoutsForShader,
+      label: `${name}`,
+    });
+  }
+ 
+  /**
+   * TODO(michaelwong): fill this out with something helpful so we don't forget what it
+   * does in 2 weeks
+   * This function something something...
+   * 
+   * @param shaders 
+   */
+  createPipeline(shaders: { [name: string]: GPUEngineShaderDetails }) {
+    const { device, buffers, canvasFormat } = this;
+
+    // Create a map to hold the final shader pipeline by name
+    const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
+
+    // For each shader, create the shader pipeline object and set it in the map
+    Object.entries(shaders).forEach(([name, details]) => {
+      const isValidShaderType = details.type === 'compute' || details.type === 'render';
+      if (!isValidShaderType)
+        throw new Error("shader.type is not compute or render");
+
+      // Create all of the resources to build a GPU shader (code, GPU layout declarations, etc.)
       const code = typeof details.source === 'string' ? details.source : details.source.default;
-      const shaderModule = device.createShaderModule({ code });
+      const shaderModule = device.createShaderModule({ code, label: name });
+      const shaderPipelineLayout = this.createShaderPipelineLayout(name, details);
 
-      // Create pipeline layout with all bind group layouts
-      // console.log("bindGroupLayoutNumber: ", bindGroupLayouts.length);
-
-      const shaderPipelineLayout = device.createPipelineLayout({
-        bindGroupLayouts: bindGroupLayouts,
-        label: `${name}`,
-      });
-
-      if (details.type === 'render') {
-        // console.log("creating render for: ", name);
-
-        const renderPipeline = device.createRenderPipeline({
-          layout: shaderPipelineLayout,
+      if (details.type === 'compute') {
+        const computePipeline = device.createComputePipeline({
           label: `${name} - pipeline`,
-          vertex: {
-            module: shaderModule,
-            // entryPoint: details.vertexEntryPoint ?? 'vertexMain',
-          },
+          layout: shaderPipelineLayout,
+          compute: { module: shaderModule }
+        });
+        shaderToPipeline.set(name, computePipeline);
+      } else {
+        // If it's not a compute pipeline, then it must be a render pipeline
+        const renderPipeline = device.createRenderPipeline({
+          label: `${name} - pipeline`,
+          layout: shaderPipelineLayout,
+          vertex: { module: shaderModule },
           fragment: {
             module: shaderModule,
-            // entryPoint: details.fragmentEntryPoint ?? 'fragmentMain',
             targets: [{ format: canvasFormat }],
           },
         });
         shaderToPipeline.set(name, renderPipeline);
-      } else if (details.type === 'compute') {
-        console.log("creating compute for: ", name);
-        const computePipeline = device.createComputePipeline({
-          label: 'myCompute',
-          layout: shaderPipelineLayout,
-          compute: {
-            module: shaderModule,
-            entryPoint: details.computeEntryPoint ?? 'computeMain',
-          }
-        });
-        shaderToPipeline.set(name, computePipeline);
-      } else {
-        throw new Error("shader.type is not compute or render");
       }
     });
 
