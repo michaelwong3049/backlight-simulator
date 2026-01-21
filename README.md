@@ -1,6 +1,14 @@
 # Backlight-Simulator
 A online web replica version of LEDs changing color in coordination to a video's colors. 
 
+This app first was creating using just TypeScript and React. The idea of replicating this backlighting effect was to divide the given vidoe into dimensions/quadrants, average the respective colors, and then display this onto a `HTMLCanvasElement` behind the video with the video being ceneterd on the screen like so:
+
+https://youtu.be/4w1SsJwDAZY
+
+Here, it is evident that the color changes in the background aren't instantaneous, especially with only having 9 divisions/quadrants. This is due to the large amounts of computation required to average the colors out, as well as JavaScript being a single-threaded program. Next, we integrated parallelism/multithreading to offload computations to the GPU usgin WebGPU and WGSL... and the results are **beautiful**:
+
+https://youtu.be/NDz5VF0ayro
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
