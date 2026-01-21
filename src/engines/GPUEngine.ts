@@ -124,19 +124,22 @@ export default class GPUEngine {
   }
 
   cleanup() {
+    console.log(this.buffers);
     this.buffers.forEach((buf) => buf.destroy());
     this.buffers.clear();
   }
 
   // overspecified for compute shader
   async execute(video: HTMLVideoElement, ctx: GPUCanvasContext, workgroupCount: [number, number, number]) {
-    if (this.isProcessingOperation) return Promise.reject('GPU operation in progress');
+    if (this.isProcessingOperation)
+      return Promise.reject('GPU operation in progress');
 
     const { device, shaders, videoInputTexture } = this;
-    if (!shaders) throw new Error("You have not called `prepareForRender` yet");
+    if (!shaders)
+      throw new Error("You have not called `prepareForRender` yet");
 
     this.isProcessingOperation = true;
-  
+
     this.sendVideoData(video);
 
     const commandEncoder = device.createCommandEncoder();
@@ -379,7 +382,7 @@ export default class GPUEngine {
    * @param shaders 
    */
   createPipeline(shaders: { [name: string]: GPUEngineShaderDetails }) {
-    const { device, buffers, canvasFormat } = this;
+    const { device, canvasFormat } = this;
 
     // Create a map to hold the final shader pipeline by name
     const shaderToPipeline = new Map<string, GPUComputePipeline | GPURenderPipeline>();
@@ -434,7 +437,6 @@ export default class GPUEngine {
       // console.log("label: ", label);
 
       if (this.buffers.has(name)) {
-        return;
         throw new Error(`Failed to create buffer, buffer named "${name}" exists already`);
       }
 
@@ -449,6 +451,11 @@ export default class GPUEngine {
 
   destroyBuffer(name: string) {
     this.buffers.get(name)?.destroy();
+    this.buffers.delete(name);
+  }
+
+  clearBindGroups() {
+    this.bindGroups.clear();
   }
 
   // NOTE: im currently hard coding this to be:
