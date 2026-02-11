@@ -18,6 +18,7 @@
   },
   "scripts": {
     "start": "craco start",
+    "test-wtr": "wtr test/**/*.test.ts --node-resolve",
     "build": "craco build",
     "test": "craco test --watchAll=false",
     "eject": "craco eject"
@@ -48,6 +49,11 @@
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@craco/craco": "^7.1.0",
+    "@esm-bundle/chai": "^4.3.4-fix.0",
+    "@web/dev-server-esbuild": "^1.0.4",
+    "@web/dev-server-import-maps": "^0.2.1",
+    "@web/dev-server-rollup": "^0.6.4",
+    "@web/test-runner": "^0.20.2",
     "@webgpu/types": "^0.1.66",
     "canvas": "^3.0.0-rc3"
   }

@@ -16,13 +16,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"],
-    "baseUrl": ".",
+    "baseUrl": "./",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["src/*"]
     }
   },
   "include": [
     "src/**/*",
-    "src/**/*.wgsl"
+    "src/**/*.wgsl",
+    "test/**/*"
   ]
 }

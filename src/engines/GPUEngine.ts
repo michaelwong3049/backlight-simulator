@@ -4,7 +4,7 @@ export interface GPUEngineBuffer {
   name: string;
   sizeInBytes: number;
   label: string;
-  usage: number; // one of GPUBufferUsage, use bitwise-or for multiple use cases
+  usage: GPUBufferUsageFlags; // one of GPUBufferUsage, use bitwise-or for multiple use cases
   data?: Array<number>;
 }
 

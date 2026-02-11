@@ -1,21 +1,27 @@
-# TODO 
+# TODO
 
-- [ ] write to the canvas with copyExternalImageToTexture
-- [ ]
+testing goals:
+1. make sure this works on places other than machine
+2. make sure the math is correct
+  - when i pass in a video, and run it through the gpu, then i expect a certain output array texture
+    - test video resolution (1920x1080)
+    - test aspect ratios (squares, etc.)
+    - test divisions increasing
+    - test that a color is consistent at the border(s)
+    - test that a divsion surrounded by divisions still renders correctly
+3. how can we unit test the shader
+  - idk, this a good question tho
+4. how can we unit test the GPUEngine class
+  - test bind groups and buffer assignment
+  - we want to avoid a case where "there's no errors but we're wrong"
+5. test against resource leak (buffers, memory, etc.)
+6. performance testing
+  - does my product work well against high resolution videos (4k)
+  - how often am i dropping frames?
+  - does this work with variable frame rate (30fps, 60fps, 180fps)
 
-# PLAN
-
-
-# QUESTIONS
-
-- the raw average of colors might be ugly. weighted color average maybe?
-- maybe average is bad a formula/aggregator, most common color seen?
-- how do we write the video directly to GPU?
-- do we need a compute AND render shader? or is render good enough?
-- how can we profile this?
-
-# 11/18
-the TODO is to figure out how to create a bind group that supports a GPUTexture...
-i updated the @webgpu/types since the old version did NOT support GPUTexture type for the entries when calling
-createBindGroup() function...
-
+how do we actually test something:
+- since all of these features are built for the web, we are
+gonna have a difficult trying to test NOT on the web.
+- the question: how do run i tests on another machine that can
+make its browser

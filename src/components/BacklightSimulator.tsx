@@ -1,24 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
-import GPUEngine, { GPUEngineBuffer } from '@/engines/GPUEngine';
+import GPUEngine, { GPUEngineBuffer, GPUEngineShaderDetails } from '@/engines/GPUEngine';
 import backlightShader from '@/shaders/backlight.wgsl';
 import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
+import { GPU_BUFFERS } from '@/constants';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
 const NUM_ELEMENTS = 5324000; // TODO(andymina): where did this number come from?
 const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
 const WORKGROUP_SIZE = 64;
-
-const GPU_BUFFERS: Array<GPUEngineBuffer> = [
-  {
-    name: 'settingsBuffer', // TODO: this buffer is for ...
-    label: "settingsBuffer - label",
-    // TODO(michaelwong): fix to match the size in bytes of params
-    sizeInBytes: 24, 
-    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
-  }
-]
 
 interface Props {
   width: number;

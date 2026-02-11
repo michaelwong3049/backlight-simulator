@@ -1,3 +1,5 @@
+import { GPUEngineBuffer } from "./engines/GPUEngine";
+
 export const RED_CHANNEL_OFFSET = 0;
 export const GREEN_CHANNEL_OFFSET = 1;
 export const BLUE_CHANNEL_OFFSET = 2;
@@ -47,4 +49,17 @@ export const GPUTextureUsage = Object.freeze({
   STORAGE_BINDING: 0x08,
   RENDER_ATACHMENT: 0x10
 } as const);
+
 export type GPUTextureUsage = typeof GPUTextureUsage[keyof typeof GPUTextureUsage];
+
+
+export const GPU_BUFFERS: Array<GPUEngineBuffer> = [
+  {
+    name: 'settingsBuffer', // TODO: this buffer is for ...
+    label: "settingsBuffer - label",
+    // TODO(michaelwong): fix to match the size in bytes of params
+    sizeInBytes: 24, 
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
+  }
+]
+
