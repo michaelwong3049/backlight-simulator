@@ -1,9 +1,54 @@
-import { expect } from '@esm-bundle/chai';
+import { expect } from 'chai';
+import spies from 'chai-spies';
 
-import GPUEngine, { GPUEngineBuffer } from "@/engines/GPUEngine"; // "src/engines/GPUEngine"
-// import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
+import { spy } from 'sinon';
 
-import { GPU_BUFFERS } from "../../../src/constants";
+import GPUEngine, { GPUEngineBuffer } from "@/engines/GPUEngine";
+import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
+
+import { GPU_BUFFERS } from '@/constants';
+
+const engineTestBuffers: Array<GPUEngineBuffer> = [
+  {
+    name: "test_buffer_1",
+    label: "test_buffer_1 - label",
+    sizeInBytes: 24,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
+  } ,
+  {
+    name: "test_buffer_2",
+    label: "test_buffer_2 - label",
+    sizeInBytes: 16,
+    usage: GPUBufferUsage.STORAGE
+  } ,
+  {
+    name: "test_buffer_3",
+    label: "test_buffer_3 - label",
+    sizeInBytes: 32,
+    usage: GPUBufferUsage.COPY_DST
+  } 
+]
+
+const engineTestComputeBindGroups = [
+  {
+    name: 'test_compute_bind_groups_1',
+    visibility: GPUShaderStage.COMPUTE,
+    buffers: ['test_buffer_1', 'test_buffer_2']
+  },
+  {
+    name: 'test_compute_bind_groups_2',
+    visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+    buffers: ['test_buffer_3']
+  }
+]
+
+const textureBindGroups = [
+  {
+    name: 'test_texture_bind_groups_1',
+    visibility: GPUShaderStage.FRAGMENT,
+    buffers: ['videoOutputTexture'] 
+  }
+]
 
 
 describe("GPUEngine", () => {
@@ -18,148 +63,111 @@ describe("GPUEngine", () => {
 
   let engine: GPUEngine | null;
 
-  const engineTestBuffers: Array<GPUEngineBuffer> = [
-    {
-      name: "test_buffer_1",
-      label: "test_buffer_1 - label",
-      sizeInBytes: 24,
-      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
-    } ,
-    {
-      name: "test_buffer_2",
-      label: "test_buffer_2 - label",
-      sizeInBytes: 16,
-      usage: GPUBufferUsage.STORAGE
-    } ,
-    {
-      name: "test_buffer_3",
-      label: "test_buffer_3 - label",
-      sizeInBytes: 32,
-      usage: GPUBufferUsage.COPY_DST
-    } 
-  ]
-
-
-    const engineTestComputeBindGroups = [
-      {
-        name: 'test_compute_bind_groups_1',
-        visibility: GPUShaderStage.COMPUTE,
-        buffers: ['test_buffer_1', 'test_buffer_2']
-      },
-      {
-        name: 'test_compute_bind_group_1',
-        visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
-        buffers: ['test_buffer_3']
-      }
-    ]
-
-  const textureBindGroups = [
-    {
-      name: 'test_texture_bind_group_1',
-      visibility: GPUShaderStage.FRAGMENT,
-      buffers: ['videoOutputTexture'] 
+  beforeEach(async () => {
+    try {
+      engine = await GPUEngine.initialize(
+        1920, 
+        1080,
+        GPU_BUFFERS
+      );
+    } catch (error) {
+      throw new Error(`Error initializing GPU: + ${error}`);
     }
-  ]
+  })
 
   afterEach(() => {
     expect(engine).to.not.be.null;
     engine!.cleanup();
   })
 
-  it("creates buffers", () => {
-    expect(engine).to.not.be.null;
+  describe("when I create a GPUEngine with buffers", () => {
+    it('creates the buffers on the GPU', () => {
+      expect(engine).to.not.be.null;
 
-    engine!.createBuffers(engineTestBuffers);
+      const createBufferSpy = spy(engine!.device, 'createBuffer');
 
-    engineTestBuffers.forEach((buffer) => {
-      expect(engine!.hasBuffer(buffer.name));
+      engine!.createBuffers([{
+        name: 'myTestBuffer',
+        sizeInBytes: 32,
+        label: 'myTestBuffer - label', 
+        usage: GPUBufferUsage.STORAGE,
+      }]);
+
+      expect(createBufferSpy.calledOnce).to.be.true;
+      expect(engine!.hasBuffer('myTestBuffer')).to.be.true;
+    });
+  });
+
+  describe("when I create a GPUEngine with bind groups", () => {
+    it("creates bind groups for the GPU", () => {
+      expect(engine).to.not.be.null;
+
+      const createBindGroupLayoutSpy = spy(engine!.device, "createBindGroupLayout");
+      const createBindGroupSpy = spy(engine!.device, "createBindGroup");
+
+      engine!.createBuffers(engineTestBuffers);
+
+      // we call this createPipeline function, but we test against bind group initialization functionality for now
+      engine!.createPipeline(
+        {
+          computations: {
+            source: convolutionShader,
+            type: "compute",
+            bindGroups: engineTestComputeBindGroups
+          },
+          display: {
+            source: convolutionShader,
+            type: "render",
+            bindGroups: textureBindGroups
+          }
+        }
+      )
+
+      expect(createBindGroupLayoutSpy.callCount).to.equal(3);
+      expect(createBindGroupSpy.callCount).to.equal(3);
+
+      for (let idx = 0; idx < 2; idx++) {
+        const bindGroupLayoutCall = createBindGroupLayoutSpy.getCall(idx);
+        const bindGroupLayoutCallArgs = bindGroupLayoutCall.args[0];
+
+        const layout = bindGroupLayoutCall.returnValue;
+        const layoutLabel = bindGroupLayoutCallArgs.label;
+        const layoutEntries = Array.from(bindGroupLayoutCallArgs.entries); // Q(andymina): required because our tsconfig doesnt allow iteration on an Iterable type??
+
+        const bindGroupCall = createBindGroupSpy.getCall(idx);
+        const bindGroupCallArgs = bindGroupCall.args[0];
+
+        const bindGroupLabel = bindGroupCallArgs.label;
+        const bindGroupLayout = bindGroupCallArgs.layout;
+        const bindGroupEntries = Array.from(bindGroupCallArgs.entries);
+
+        // since bind groups are created with bind group layouts, we test bind group layouts first... we have to test label, and entries
+        if (idx == 0) expect(layoutLabel).to.equal("test_compute_bind_groups_1 - layout");
+        else if (idx == 1) expect(layoutLabel).to.equal("test_compute_bind_groups_2 - layout");
+        else if (idx == 2) expect(layoutLabel).to.equal("test_texture_bind_groups_1 - layout");
+
+        // this is testing for the computeBindGroups
+        for (const entry of layoutEntries) {
+          // here we are dealing with a bind group with only buffers...
+          expect(entry.buffer).to.not.be.undefined;
+          expect(entry.texture).to.be.undefined;
+        }
+
+        // now we test the bind group itself... we have to test the label, layout, and entries
+        if (idx == 0) expect(bindGroupLabel).to.equal("test_compute_bind_groups_1 - bind group");
+        else if (idx == 1) expect(bindGroupLabel).to.equal("test_compute_bind_groups_2 - bind group");
+        else if (idx == 2) expect(bindGroupLabel).to.equal("test_texture_bind_groups_1 - bind group");
+        expect(bindGroupLayout).to.equal(layout); // i think equal here is right and not deep equal?
+        for (const entry of bindGroupEntries) {
+          // first we need expect that the property exists, so then we can take it 
+          if ("buffer" in entry.resource) {
+            expect(entry.resource["buffer"]).to.be.instanceOf(GPUBuffer)
+          } else {
+            expect(entry.resource).to.be.instanceOf(GPUTextureView);
+          }
+        }
+      }
     })
   })
 })
 
-describe("shader computations", () => {
-
-  let engine: GPUEngine | null;
-  let video: HTMLVideoElement | null;
-  let testFrame: ImageData | null;
-  let canvas: HTMLCanvasElement | null; 
-  let ctx: GPUCanvasContext | null;
-
-  const computeTestBindGroups = [
-    {
-      // bind group and buffer holds the data about our parameters for computations (horizontalDivision, videoWidth, etc)
-      name: 'settingsBindGroup',
-      visibility: GPUShaderStage.COMPUTE,
-      buffers: ['settingsBuffer', 'colorDivisionOutBuffer']
-    },
-    {
-      // this bind group holds the buffers of the input data of the video's per frame image data and processing output
-      name: 'dataBindGroup',
-      visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
-      buffers: ['videoInputTexture', 'videoOutputTexture']
-    }
-  ]
-
-  const textureTestBindGroups = [
-    {
-      // this bind group holds the buffers of the input data of the video's per frame image data and processing output
-      name: 'textureDataBindGroup',
-      visibility: GPUShaderStage.FRAGMENT,
-      buffers: ['videoOutputTexture'] 
-    }
-  ]
-
-
-  beforeEach(async  () => {
-    try {
-      engine = await GPUEngine.initialize(1920, 1080, GPU_BUFFERS);
-
-      engine.createBuffers([{
-        name: 'colorDivisionOutBuffer',
-        label: 'colorDivisionOutBuffer - label',
-        // each division has 5 numbers, each 4 bytes
-        // 3 and 3 represents # of divisions
-        sizeInBytes: 3 * 3 * 5 * 4,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-      }]);
-
-      engine.createPipeline(
-        {
-          convolution: { 
-            source: convolutionShader,
-            type: 'compute',
-            bindGroups: computeTestBindGroups
-          },
-          videoMapper: { 
-            source: convolutionShader,
-            type: 'render',
-            bindGroups: textureTestBindGroups
-          },
-        },
-      )
-
-      canvas = document.createElement("canvas");
-      canvas.width = 100;
-      canvas.height = 100;
-
-      ctx = canvas.getContext("webgpu");
-      engine.initializeCanvas(canvas);
-
-      document.body.appendChild(canvas);
-    } catch (error) {
-      throw new Error("Error initiallizing GPUEngine: " + error);
-    }
-  })
-
-  afterEach(() => {
-    expect(engine).to.not.be.null;
-
-    engine?.cleanup();
-  })
-
-  it("averages colors for each division", async () => {
-    expect(engine).to.not.be.null;
-    expect(testFrame).to.not.be.null;
-    expect(ctx).to.not.be.null;
-  })
-})
