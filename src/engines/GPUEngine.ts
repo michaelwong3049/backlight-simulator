@@ -327,14 +327,14 @@ export default class GPUEngine {
     });
     
     const layout = device.createBindGroupLayout({
-      label: name,
+      label: `${name} - layout`,
       entries: layoutEntries,
     });
 
     // Create the bind group using its specific layout
     const bindGroup = device.createBindGroup({
-      label: name,
-      layout,
+      label: `${name} - bind group`,
+      layout: layout,
       entries: resourcesTemplate.map((resourceName, resourceIndex) => {
         const buffer = buffers.get(resourceName);
         if (!buffer) throw new Error(`buffer ${resourceName} does not exist....`);
