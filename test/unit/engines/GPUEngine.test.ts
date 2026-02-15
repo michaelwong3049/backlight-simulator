@@ -1,5 +1,4 @@
 import { expect } from 'chai';
-import spies from 'chai-spies';
 
 import { spy } from 'sinon';
 
@@ -7,7 +6,6 @@ import GPUEngine, { GPUEngineBuffer } from "@/engines/GPUEngine";
 import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
 
 import { GPU_BUFFERS } from '@/constants';
-import { create } from 'domain';
 
 const engineTestBuffers: Array<GPUEngineBuffer> = [
   {
