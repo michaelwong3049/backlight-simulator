@@ -370,7 +370,7 @@ export default class GPUEngine {
 
     return device.createPipelineLayout({
       bindGroupLayouts: allBindGroupLayoutsForShader,
-      label: `${name}`,
+      label: `${name} - pipeline layout`,
     });
   }
  

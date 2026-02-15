@@ -7,6 +7,7 @@ import GPUEngine, { GPUEngineBuffer } from "@/engines/GPUEngine";
 import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
 
 import { GPU_BUFFERS } from '@/constants';
+import { create } from 'domain';
 
 const engineTestBuffers: Array<GPUEngineBuffer> = [
   {
@@ -165,6 +166,81 @@ describe("GPUEngine", () => {
           } else {
             expect(entry.resource).to.be.instanceOf(GPUTextureView);
           }
+        }
+      }
+    })
+  })
+
+  describe("when I create GPUEngine with pipelines", () => {
+    it("creates the bind groups, layouts, and pipelines for compute/render", () => {
+      expect(engine).to.not.be.null;
+
+      const createPipelineLayoutSpy = spy(engine!.device, "createPipelineLayout");
+      const createBindGroupLayoutSpy = spy(engine!.device, "createBindGroupLayout");
+      const createComputePipelineSpy = spy(engine!.device, "createComputePipeline");
+      const createRenderPipelineSpy = spy(engine!.device, "createRenderPipeline");
+      const createShaderModuleSpy = spy(engine!.device, "createShaderModule");
+      let bindGroupLayoutIdx = 0;
+
+      engine!.createBuffers(engineTestBuffers);
+
+      engine!.createPipeline(
+        {
+          computations: {
+            source: convolutionShader,
+            type: "compute",
+            bindGroups: engineTestComputeBindGroups
+          },
+          display: {
+            source: convolutionShader,
+            type: "render",
+            bindGroups: textureBindGroups
+          }
+        }
+      )
+
+      expect(createBindGroupLayoutSpy.callCount).to.equal(3);
+      expect(createPipelineLayoutSpy.callCount).to.equal(2);
+      expect(createShaderModuleSpy.callCount).to.equal(2);
+      expect(createComputePipelineSpy.callCount).to.equal(1);
+      expect(createRenderPipelineSpy.callCount).to.equal(1);
+
+      const createComputePipelineCall = createComputePipelineSpy.getCall(0);
+      const createRenderPipelineCall = createRenderPipelineSpy.getCall(0);
+
+      const createComputePipelineArgs = createComputePipelineCall.args[0];
+      const createRenderPipelineArgs = createRenderPipelineCall.args[0];
+
+      for (let idx = 0; idx < 2; idx++) {
+        const createPipelineLayoutCall = createPipelineLayoutSpy.getCall(idx);
+        const createShaderModuleCall = createShaderModuleSpy.getCall(idx);
+
+        const createPipelineLayoutArgs = createPipelineLayoutCall.args[0];
+        const shaderModule = createShaderModuleCall.returnValue;
+
+        const pipelineBindGroupLayouts = Array.from(createPipelineLayoutArgs.bindGroupLayouts)
+        for (let bind_idx = 0; bind_idx < pipelineBindGroupLayouts.length; bind_idx++) {
+          const createBindGroupLayoutCall = createBindGroupLayoutSpy.getCall(bindGroupLayoutIdx);
+          const bindGroupLayout = createBindGroupLayoutCall.returnValue;
+          expect(pipelineBindGroupLayouts[bind_idx]).to.equal(bindGroupLayout);
+          bindGroupLayoutIdx++;
+        }
+
+        if (idx == 0) {
+          expect(createPipelineLayoutArgs.label).to.equal("computations - pipeline layout");
+          expect(createComputePipelineArgs.label).to.equal("computations - pipeline");
+          expect(createComputePipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
+          expect(createComputePipelineArgs.compute.module).to.equal(shaderModule);
+        }
+        else if (idx == 1) {
+          expect(createPipelineLayoutArgs.label).to.equal("display - pipeline layout");
+          expect(createRenderPipelineArgs.label).to.equal("display - pipeline");
+          expect(createRenderPipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
+          expect(createRenderPipelineArgs.vertex).to.not.be.null;
+          expect(createRenderPipelineArgs.vertex.module).to.equal(shaderModule);
+          expect(createRenderPipelineArgs.fragment).to.not.be.null;
+          expect(createRenderPipelineArgs.fragment?.module).to.equal(shaderModule);
+          expect(Array.from(createRenderPipelineArgs.fragment!.targets)[0]!.format).to.equal(engine!.canvasFormat);
         }
       }
     })
