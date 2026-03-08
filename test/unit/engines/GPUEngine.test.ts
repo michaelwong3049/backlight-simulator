@@ -1,4 +1,4 @@
-import { expect } from 'chai';
+import { expect as chaiExcept } from 'chai';
 
 import { spy } from 'sinon';
 
@@ -75,13 +75,13 @@ describe("GPUEngine", () => {
   })
 
   afterEach(() => {
-    expect(engine).to.not.be.null;
+    chaiExcept(engine).to.not.be.null;
     engine!.cleanup();
   })
 
-  describe("when I create a GPUEngine with buffers", () => {
+  describe("GPUEngine's createBuffers function", () => {
     it('creates the buffers on the GPU', () => {
-      expect(engine).to.not.be.null;
+      chaiExcept(engine).to.not.be.null;
 
       const createBufferSpy = spy(engine!.device, 'createBuffer');
 
@@ -92,14 +92,14 @@ describe("GPUEngine", () => {
         usage: GPUBufferUsage.STORAGE,
       }]);
 
-      expect(createBufferSpy.calledOnce).to.be.true;
-      expect(engine!.hasBuffer('myTestBuffer')).to.be.true;
+      chaiExcept(createBufferSpy.calledOnce).to.be.true;
+      chaiExcept(engine!.hasBuffer('myTestBuffer')).to.be.true;
     });
   });
 
-  describe("when I create a GPUEngine with bind groups", () => {
+  describe("GPUEngine's createPipeline function testing for bind group creation", () => {
     it("creates bind groups for the GPU", () => {
-      expect(engine).to.not.be.null;
+      chaiExcept(engine).to.not.be.null;
 
       const createBindGroupLayoutSpy = spy(engine!.device, "createBindGroupLayout");
       const createBindGroupSpy = spy(engine!.device, "createBindGroup");
@@ -122,8 +122,8 @@ describe("GPUEngine", () => {
         }
       )
 
-      expect(createBindGroupLayoutSpy.callCount).to.equal(3);
-      expect(createBindGroupSpy.callCount).to.equal(3);
+      chaiExcept(createBindGroupLayoutSpy.callCount).to.equal(3);
+      chaiExcept(createBindGroupSpy.callCount).to.equal(3);
 
       for (let idx = 0; idx < 2; idx++) {
         const bindGroupLayoutCall = createBindGroupLayoutSpy.getCall(idx);
@@ -141,37 +141,37 @@ describe("GPUEngine", () => {
         const bindGroupEntries = Array.from(bindGroupCallArgs.entries);
 
         // since bind groups are created with bind group layouts, we test bind group layouts first... we have to test label, and entries
-        if (idx == 0) expect(layoutLabel).to.equal("test_compute_bind_groups_1 - layout");
-        else if (idx == 1) expect(layoutLabel).to.equal("test_compute_bind_groups_2 - layout");
-        else if (idx == 2) expect(layoutLabel).to.equal("test_texture_bind_groups_1 - layout");
+        if (idx == 0) chaiExcept(layoutLabel).to.equal("test_compute_bind_groups_1 - layout");
+        else if (idx == 1) chaiExcept(layoutLabel).to.equal("test_compute_bind_groups_2 - layout");
+        else if (idx == 2) chaiExcept(layoutLabel).to.equal("test_texture_bind_groups_1 - layout");
 
         // this is testing for the computeBindGroups
         for (const entry of layoutEntries) {
           // here we are dealing with a bind group with only buffers...
-          expect(entry.buffer).to.not.be.undefined;
-          expect(entry.texture).to.be.undefined;
+          chaiExcept(entry.buffer).to.not.be.undefined;
+          chaiExcept(entry.texture).to.be.undefined;
         }
 
         // now we test the bind group itself... we have to test the label, layout, and entries
-        if (idx == 0) expect(bindGroupLabel).to.equal("test_compute_bind_groups_1 - bind group");
-        else if (idx == 1) expect(bindGroupLabel).to.equal("test_compute_bind_groups_2 - bind group");
-        else if (idx == 2) expect(bindGroupLabel).to.equal("test_texture_bind_groups_1 - bind group");
-        expect(bindGroupLayout).to.equal(layout); // i think equal here is right and not deep equal?
+        if (idx == 0) chaiExcept(bindGroupLabel).to.equal("test_compute_bind_groups_1 - bind group");
+        else if (idx == 1) chaiExcept(bindGroupLabel).to.equal("test_compute_bind_groups_2 - bind group");
+        else if (idx == 2) chaiExcept(bindGroupLabel).to.equal("test_texture_bind_groups_1 - bind group");
+        chaiExcept(bindGroupLayout).to.equal(layout); // i think equal here is right and not deep equal?
         for (const entry of bindGroupEntries) {
-          // first we need expect that the property exists, so then we can take it 
+          // first we need chaiExcept that the property exists, so then we can take it 
           if ("buffer" in entry.resource) {
-            expect(entry.resource["buffer"]).to.be.instanceOf(GPUBuffer)
+            chaiExcept(entry.resource["buffer"]).to.be.instanceOf(GPUBuffer)
           } else {
-            expect(entry.resource).to.be.instanceOf(GPUTextureView);
+            chaiExcept(entry.resource).to.be.instanceOf(GPUTextureView);
           }
         }
       }
     })
   })
 
-  describe("when I create GPUEngine with pipelines", () => {
+  describe("GPUEngine's createPipeline function", () => {
     it("creates the bind groups, layouts, and pipelines for compute/render", () => {
-      expect(engine).to.not.be.null;
+      chaiExcept(engine).to.not.be.null;
 
       const createPipelineLayoutSpy = spy(engine!.device, "createPipelineLayout");
       const createBindGroupLayoutSpy = spy(engine!.device, "createBindGroupLayout");
@@ -197,11 +197,11 @@ describe("GPUEngine", () => {
         }
       )
 
-      expect(createBindGroupLayoutSpy.callCount).to.equal(3);
-      expect(createPipelineLayoutSpy.callCount).to.equal(2);
-      expect(createShaderModuleSpy.callCount).to.equal(2);
-      expect(createComputePipelineSpy.callCount).to.equal(1);
-      expect(createRenderPipelineSpy.callCount).to.equal(1);
+      chaiExcept(createBindGroupLayoutSpy.callCount).to.equal(3);
+      chaiExcept(createPipelineLayoutSpy.callCount).to.equal(2);
+      chaiExcept(createShaderModuleSpy.callCount).to.equal(2);
+      chaiExcept(createComputePipelineSpy.callCount).to.equal(1);
+      chaiExcept(createRenderPipelineSpy.callCount).to.equal(1);
 
       const createComputePipelineCall = createComputePipelineSpy.getCall(0);
       const createRenderPipelineCall = createRenderPipelineSpy.getCall(0);
@@ -220,27 +220,33 @@ describe("GPUEngine", () => {
         for (let bind_idx = 0; bind_idx < pipelineBindGroupLayouts.length; bind_idx++) {
           const createBindGroupLayoutCall = createBindGroupLayoutSpy.getCall(bindGroupLayoutIdx);
           const bindGroupLayout = createBindGroupLayoutCall.returnValue;
-          expect(pipelineBindGroupLayouts[bind_idx]).to.equal(bindGroupLayout);
+          chaiExcept(pipelineBindGroupLayouts[bind_idx]).to.equal(bindGroupLayout);
           bindGroupLayoutIdx++;
         }
 
         if (idx == 0) {
-          expect(createPipelineLayoutArgs.label).to.equal("computations - pipeline layout");
-          expect(createComputePipelineArgs.label).to.equal("computations - pipeline");
-          expect(createComputePipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
-          expect(createComputePipelineArgs.compute.module).to.equal(shaderModule);
+          chaiExcept(createPipelineLayoutArgs.label).to.equal("computations - pipeline layout");
+          chaiExcept(createComputePipelineArgs.label).to.equal("computations - pipeline");
+          chaiExcept(createComputePipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
+          chaiExcept(createComputePipelineArgs.compute.module).to.equal(shaderModule);
         }
         else if (idx == 1) {
-          expect(createPipelineLayoutArgs.label).to.equal("display - pipeline layout");
-          expect(createRenderPipelineArgs.label).to.equal("display - pipeline");
-          expect(createRenderPipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
-          expect(createRenderPipelineArgs.vertex).to.not.be.null;
-          expect(createRenderPipelineArgs.vertex.module).to.equal(shaderModule);
-          expect(createRenderPipelineArgs.fragment).to.not.be.null;
-          expect(createRenderPipelineArgs.fragment?.module).to.equal(shaderModule);
-          expect(Array.from(createRenderPipelineArgs.fragment!.targets)[0]!.format).to.equal(engine!.canvasFormat);
+          chaiExcept(createPipelineLayoutArgs.label).to.equal("display - pipeline layout");
+          chaiExcept(createRenderPipelineArgs.label).to.equal("display - pipeline");
+          chaiExcept(createRenderPipelineArgs.layout).to.equal(createPipelineLayoutCall.returnValue);
+          chaiExcept(createRenderPipelineArgs.vertex).to.not.be.null;
+          chaiExcept(createRenderPipelineArgs.vertex.module).to.equal(shaderModule);
+          chaiExcept(createRenderPipelineArgs.fragment).to.not.be.null;
+          chaiExcept(createRenderPipelineArgs.fragment?.module).to.equal(shaderModule);
+          chaiExcept(Array.from(createRenderPipelineArgs.fragment!.targets)[0]!.format).to.equal(engine!.canvasFormat);
         }
       }
+    })
+  })
+
+  describe("GPUEngine's execute function", () => {
+    it("runs and tests computations from the gpu", () => { 
+      chaiExcept(engine).to.not.be.null;
     })
   })
 })

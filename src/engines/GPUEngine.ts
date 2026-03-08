@@ -130,7 +130,7 @@ export default class GPUEngine {
   }
 
   // overspecified for compute shader
-  async execute(video: HTMLVideoElement, ctx: GPUCanvasContext, workgroupCount: [number, number, number]) {
+  async execute(imageSource: GPUCopyExternalImageSource, ctx: GPUCanvasContext, workgroupCount: [number, number, number]) {
     if (this.isProcessingOperation)
       return Promise.reject('GPU operation in progress');
 
@@ -140,7 +140,7 @@ export default class GPUEngine {
 
     this.isProcessingOperation = true;
 
-    this.sendVideoData(video);
+    this.sendVideoData(imageSource);
 
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
@@ -551,13 +551,39 @@ export default class GPUEngine {
     this.videoInputTexture = texture;
   }
 
-  private sendVideoData(video: HTMLVideoElement) {
+  private getImageSourceDimensions(imageSource: HTMLVideoElement | HTMLCanvasElement | ImageData): [number, number] {
+    if (imageSource instanceof HTMLVideoElement) {
+      return [imageSource.videoWidth, imageSource.videoHeight];
+    }
+
+    else if (imageSource instanceof HTMLCanvasElement) {
+      return [imageSource.width, imageSource.height];
+    }
+
+    else if (imageSource instanceof ImageData) {
+      return [imageSource.width, imageSource.height];
+    }
+
+    throw new Error("Unexpected type that is trying to get dimensions?");
+  }
+
+  private sendVideoData(imageSource: GPUCopyExternalImageSource) {
+    if (
+      !(imageSource instanceof HTMLVideoElement) &&
+      !(imageSource instanceof HTMLCanvasElement) &&
+      !(imageSource instanceof ImageData)
+    ) {
+      throw new Error("Supported source types are: HTMLVideoElement, HTMLCanvasElement, and ImageData");
+    }
+
     const { device, videoInputTexture } = this;
 
+    const [width, height] = this.getImageSourceDimensions(imageSource);
+
     device.queue.copyExternalImageToTexture(
-      { source: video },
+      { source: imageSource },
       { texture: videoInputTexture },
-      [video.videoWidth, video.videoHeight]
+      [width, height]
     )
   }
 }

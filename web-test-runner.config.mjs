@@ -46,7 +46,8 @@ function wgslPlugin() {
 }
 
 export default {
-  files: "test/**/*.test.ts",
+  // files :["test/**/*.test.ts"]
+  files: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
   nodeResolve: true,
 
   browsers: [
