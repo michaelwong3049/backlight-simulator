@@ -5,7 +5,7 @@ This app first was creating using just TypeScript and React. The idea of replica
 
 https://youtu.be/4w1SsJwDAZY
 
-Here, it is evident that the color changes in the background aren't instantaneous, especially with only having 9 divisions/quadrants. This is due to the large amounts of computation required to average the colors out, as well as JavaScript being a single-threaded program. Next, we integrated parallelism/multithreading to offload computations to the GPU usgin WebGPU and WGSL... and the results are **beautiful**:
+Here, it is evident that the color changes in the background aren't instantaneous, especially with only having 9 divisions/quadrants. This is due to the large amounts of computation required to average the colors out, as well as JavaScript being a single-threaded program. Next, we integrated parallelism/multithreading to offload computations to the GPU usgin WebGPU and WGSL... and here are the results:
 
 https://youtu.be/NDz5VF0ayro
 
