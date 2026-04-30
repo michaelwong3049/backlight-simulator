@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GPUBufferUsage } from '@/constants';
-import GPUEngine, { GPUEngineBuffer, GPUEngineShaderDetails } from '@/engines/GPUEngine';
-import backlightShader from '@/shaders/backlight.wgsl';
+import GPUEngine from '@/engines/GPUEngine';
+// import backlightShader from '@/shaders/backlight.wgsl';
 import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
 import { GPU_BUFFERS } from '@/constants';
 
 const videoSrc = require('@/assets/videoplayback.mp4');
 
-const NUM_ELEMENTS = 5324000; // TODO(andymina): where did this number come from?
-const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
-const WORKGROUP_SIZE = 64;
+// const NUM_ELEMENTS = 5324000; // TODO(andymina): where did this number come from?
+// const BUFFER_SIZE_IN_BYTES = NUM_ELEMENTS * 4;
+// const WORKGROUP_SIZE = 64;
 
 interface Props {
   width: number;
@@ -42,9 +42,9 @@ export default function BacklightSimulator(props: Props) {
       
       try {
         // Profile shader execution
-        const shaderTick = Date.now();
+        // const shaderTick = Date.now();
         await engine.execute(video, ctx, [horizontalDivisions, verticalDivisions, 1]);
-        const shaderTock = Date.now();
+        // const shaderTock = Date.now();
 
         // Move onto processing the next frame
         video.requestVideoFrameCallback(() =>
