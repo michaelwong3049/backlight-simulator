@@ -18,6 +18,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install dependencies
+    - run: sudo apt install libcairo2-dev libpango1.0-dev
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
