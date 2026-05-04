@@ -30,8 +30,8 @@ export default class GPUEngine {
   canvas?: HTMLCanvasElement;
   context?: GPUCanvasContext | null;
 
-  private currentBindGroupState: Array<Array<string>> = [];
-  private desiredBindGroupState: Array<Array<string>> = [];
+  // private currentBindGroupState: Array<Array<string>> = [];
+  // private desiredBindGroupState: Array<Array<string>> = [];
   private bindGroups = new Map<string, GPUBindGroup>();
   private buffers = new Map<string, GPUBuffer | GPUTexture>(); 
 
@@ -134,7 +134,7 @@ export default class GPUEngine {
     if (this.isProcessingOperation)
       return Promise.reject('GPU operation in progress');
 
-    const { device, shaders, videoInputTexture } = this;
+    const { device, shaders } = this;
     if (!shaders)
       throw new Error("You have not called `prepareForRender` yet");
 
@@ -359,7 +359,7 @@ export default class GPUEngine {
     
     // For each bind group defined in the shader, create the bind group layout (to pre-allocate GPU resources)
     // TODO: change buffers: buffersTemplate to like resources: resourcesTemplate or something (done) ... next step is to change buffers too
-    details.bindGroups.forEach(({ name: bindGroupName, visibility, buffers: resourcesTemplate }, groupIndex) => {
+    details.bindGroups.forEach(({ name: bindGroupName, visibility, buffers: resourcesTemplate }) => {
       // Create actual bind group and its layout according to the templates provided in details.bindGroup
       const { bindGroup, layout } = this.createBindGroupAndLayout(bindGroupName, visibility, resourcesTemplate, details.type);
       allBindGroupLayoutsForShader.push(layout);
@@ -432,7 +432,7 @@ export default class GPUEngine {
     const { device } = this;
 
     bufferDescriptions.forEach((desc) => {
-      const { name, label, sizeInBytes: size, usage, data } = desc;
+      const { name, label, sizeInBytes: size, usage } = desc;
 
       // console.log("label: ", label);
 

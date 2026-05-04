@@ -54,7 +54,7 @@ export default function BacklightSimulator(props: Props) {
         console.error("FAILURE: could not process frame", error)
       }
     },
-    [height, width]
+    []
   );
 
   useEffect(() => {

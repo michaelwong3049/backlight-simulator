@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from 'react'; 
-import { GPUBufferUsage } from '@/constants';
 import type { GPUShaderConfig, UseWebGPUResource, GPURef, UseWebGPUBuffer, UseWebGPUBindGroup, ShaderSource } from '@/types/webGPU'; 
 
-const initWebGPU = async () => {
-  if (!navigator.gpu) throw new Error('WebGPU not supported');
-
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) throw new Error('No GPU adapter found');
-
-  const device = await adapter.requestDevice();
-  if (!device) throw new Error('Failed to get GPU device');
-
-  return device;
-}
+// const initWebGPU = async () => {
+//   if (!navigator.gpu) throw new Error('WebGPU not supported');
+//
+//   const adapter = await navigator.gpu.requestAdapter();
+//   if (!adapter) throw new Error('No GPU adapter found');
+//
+//   const device = await adapter.requestDevice();
+//   if (!device) throw new Error('Failed to get GPU device');
+//
+//   return device;
+// }
 
 const initGPUCanvas = (device: GPUDevice, canvas?: HTMLCanvasElement) => {
   if (!canvas) return; 
@@ -78,7 +77,7 @@ const useWebGPU = ({
   resources,
   
   // Optional configurations
-  workgroupSize = [64, 1, 1],
+  // workgroupSize = [64, 1, 1],
   canvas,
 }: UseWebGPUParams) => {
   const [gpuReady, setGpuReady] = useState(false);
@@ -243,7 +242,7 @@ const useWebGPU = ({
   };
 
   const cleanup = () => {
-    const { buffers, textures, device } = gpuRef.current;
+    const { buffers, textures } = gpuRef.current;
     
     // Destroy buffers
     buffers.forEach(buffer => buffer.destroy());
