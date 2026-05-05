@@ -462,7 +462,7 @@ export default class GPUEngine {
   // settingsBuffer as the first binding ... so @group(0), @binding(0)
   // videoImageData and colorDivsionOutBuffer ... so @group(1), @binding(0) and @binding(1)
   createBindGroupLayoutEntry(group: { name: string, visibility: number, buffers: Array<string>} , groupIndex: number): Iterable<GPUBindGroupLayoutEntry> {
-    if (groupIndex == 0) {
+    if (groupIndex === 0) {
       return [{
         binding: groupIndex,
         visibility: group.visibility,

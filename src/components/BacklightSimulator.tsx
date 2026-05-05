@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { GPUBufferUsage } from '@/constants';
+// import { GPUBufferUsage } from '@/constants';
 import GPUEngine from '@/engines/GPUEngine';
 // import backlightShader from '@/shaders/backlight.wgsl';
 import convolutionShader from '@/shaders/ConvolutionShader.wgsl';
